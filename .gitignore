@@ -1,0 +1,23 @@
+node_modules/
+.expo/
+dist/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+.env
+.env.local
+
+# macOS
+.DS_Store
+
+# Expo
+.expo-shared/
+
+# Build artifacts
+ios/build/
+android/app/build/
+android/.gradle/
