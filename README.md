@@ -1,4 +1,4 @@
-# WeaselLeads
+# Musteleads
 
 Event lead capture app for trade shows, conferences, and defense/intel events.
 
