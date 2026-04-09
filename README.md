@@ -10,20 +10,21 @@ Event lead capture app for trade shows, conferences, and defense/intel events.
 - **Business Card Scanner** — OCR-powered scanning of paper business cards (name, company, title, email, phone)
 - **Cipher Lab** — Reverse-engineers encrypted/proprietary badge QR codes by learning from known pairs
 - **CSV Export** — Salesforce Data Import Wizard compatible CSV export
-- **Phone Contacts** — Save leads directly to device contacts
-- **Offline-First** — All scans saved locally; export when ready
+- **vCard Contact Save** — Download .vcf files to add leads to phone contacts
+- **Offline-First** — PWA with service worker + IndexedDB, works without internet
+
+## Tech Stack
+
+- **Next.js** — Mobile-first Progressive Web App (PWA)
+- **html5-qrcode** — QR/barcode scanning via Web Camera API
+- **Tesseract.js** — In-browser OCR (WASM, no server needed)
+- **Dexie.js** — IndexedDB for offline lead storage
+- **Tailwind CSS** — Mobile-first responsive design
+- **Coder brand** theming (coder.com/brand)
 
 ## Target Events (2026)
 
 Google Cloud Next, SOF Week, TECHNET CYBER, TechNet Augusta, DoDIIS, Eurosatory, CANSEC, AFA Air Space & Cyber, TechNet IndoPacific, AWS re:Invent, and more.
-
-## Tech Stack
-
-- React Native (Expo) — iOS first
-- react-native-vision-camera — QR/barcode scanning
-- Google ML Kit — On-device OCR
-- SQLite — Offline lead storage
-- Coder brand theming
 
 ## Status
 

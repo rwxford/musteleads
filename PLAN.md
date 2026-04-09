@@ -1,4 +1,4 @@
-# WeaselLeads — Custom Event Lead Capture App
+# Musteleads — Custom Event Lead Capture App
 
 ## Overview
 
@@ -80,15 +80,15 @@ For ~80% of these events, badge QR codes will contain an **opaque attendee ID** 
 
 | Layer | Technology | Rationale |
 |---|---|---|
-| **Framework** | React Native (Expo managed workflow) | Single codebase, iOS + Android, fast iteration |
-| **Camera / QR** | `react-native-vision-camera` + built-in code scanner | Best-in-class, New Architecture ready, supports QR/barcode/DataMatrix |
-| **OCR (badge + business card)** | Google ML Kit Text Recognition (via `react-native-mlkit-ocr` or VisionCamera frame processor) | On-device, offline-capable, no API costs |
-| **Contacts** | `expo-contacts` | Read/write device contacts on both platforms |
-| **CSV Export** | `expo-sharing` + `expo-file-system` | Salesforce Data Import Wizard compatible |
-| **Local DB** | SQLite (`expo-sqlite`) | Offline lead storage, sync queue |
-| **State** | Zustand | Lightweight, simple |
-| **Navigation** | React Navigation | Industry standard |
-| **Styling** | NativeWind (Tailwind for RN) | Rapid UI development |
+| **Framework** | Next.js (mobile-first PWA) | Mobile-friendly web app, no app store needed, instant deploy via Vercel/Cloudflare |
+| **Camera / QR** | `html5-qrcode` + Web Camera API | Browser-native camera access, no native dependencies, works on all mobile browsers |
+| **OCR (badge + business card)** | Tesseract.js (WASM) or Google Cloud Vision API | Tesseract.js runs in-browser offline; Cloud Vision for higher accuracy (optional) |
+| **Contacts** | vCard file download (.vcf) | Generate .vcf file, browser prompts 'Add to Contacts' on mobile |
+| **CSV Export** | Blob download + Web Share API | Salesforce Data Import Wizard compatible |
+| **Local DB** | IndexedDB (via Dexie.js) + localStorage | Browser-native offline storage, PWA service worker cache |
+| **State** | Zustand | Lightweight, works in web and React Native |
+| **Navigation** | Next.js App Router | File-based routing, SSR/SSG support |
+| **Styling** | Tailwind CSS | Utility-first CSS, mobile-first responsive design |
 
 ### High-Level Data Flow
 
@@ -128,8 +128,8 @@ For ~80% of these events, badge QR codes will contain an **opaque attendee ID** 
                     ┌──────────────────────┼──────────────────┐
                     ▼                      ▼                  ▼
              ┌─────────────┐     ┌──────────────┐    ┌──────────────┐
-             │  SQLite     │     │  CSV Export   │    │  Phone       │
-             │  (offline)  │────▶│  (Salesforce) │    │  Contacts    │
+             │  IndexedDB  │     │  CSV Export   │    │  vCard       │
+             │  (Dexie.js) │────▶│  (Salesforce) │    │  Download    │
              └─────────────┘     └──────────────┘    └──────────────┘
 ```
 
@@ -269,22 +269,23 @@ The scanner has two co-equal modes selectable via a tab/toggle at the top of the
   - Column headers match Salesforce Lead object: `FirstName`, `LastName`, `Company`, `Title`, `Email`, `Phone`, `LeadSource`, `Description`, `Event_Name__c`, `Scanned_At__c`
   - Filter by event, date range, tags, or all leads
   - De-duplication by email before export
-- **ShareService**: Uses `expo-sharing` to email/AirDrop/save the CSV file
+- **ShareService**: Uses Web Share API (mobile) or Blob download (desktop) to save/send the CSV
 - **ExportHistory**: Track what was exported and when (avoid re-exporting)
 
-### Module 5: Phone Contacts Integration (`/src/contacts/`)
+### Module 5: Phone Contacts Integration (`/src/export/`)
 
-- **ContactsService**: Write new contacts to device address book using expo-contacts
-  - Maps Lead fields → Contact fields (givenName, familyName, company, jobTitle, phoneNumbers, emailAddresses)
-  - Duplicate check by email/phone before adding
-  - Permission handling (request on first use)
+- **VCardGenerator**: Generates .vcf (vCard 3.0) files from Lead data
+  - Maps Lead fields → vCard properties (FN, N, ORG, TITLE, TEL, EMAIL)
+  - On mobile browsers, downloading a .vcf file triggers the native "Add to Contacts" prompt
+  - Batch export: generate multi-contact .vcf file
+- **Permission handling**: Camera permission via Web Camera API (`navigator.mediaDevices`)
 
 ### Module 6: Offline Support (`/src/offline/`)
 
-- **ConnectivityMonitor**: Listens to NetInfo for online/offline transitions
-- **SyncManager**: On connectivity restore:
-  1. Re-attempt any failed contact saves
-  2. Queue pending CSV exports for sharing
+- **Service Worker**: Caches app shell, static assets, and Tesseract.js WASM files for offline use
+- **IndexedDB (Dexie.js)**: All leads stored in browser IndexedDB — persists across sessions
+- **PWA Manifest**: Enables "Add to Home Screen" with app name, icon, splash screen
+- **Online/Offline detection**: `navigator.onLine` + `online`/`offline` events to show sync status banner
 
 ---
 
@@ -351,28 +352,30 @@ Jane,Smith,Acme Corp,VP Sales,[email protected],+15551234567,Trade Show,"Met at 
 
 ## Phone Contacts Save Detail
 
-Using `expo-contacts` `addContactAsync`:
+Using vCard 3.0 `.vcf` file generation:
 
-```js
-{
-  contactType: 'person',
-  firstName: lead.firstName,
-  lastName: lead.lastName,
-  company: lead.company,
-  jobTitle: lead.title,
-  phoneNumbers: [{ label: 'work', number: lead.phone }],
-  emailAddresses: [{ label: 'work', email: lead.email }],
-  note: `Captured at ${lead.eventName} on ${lead.scannedAt}`
-}
 ```
+BEGIN:VCARD
+VERSION:3.0
+N:Smith;Jane;;;
+FN:Jane Smith
+ORG:Acme Corp
+TITLE:VP Sales
+TEL;TYPE=WORK:+15551234567
+EMAIL;TYPE=WORK:[email protected]
+NOTE:Captured at TechNet Cyber 2026 on 2026-06-02
+END:VCARD
+```
+
+On mobile browsers (Safari, Chrome), downloading a `.vcf` file triggers the native "Add to Contacts" prompt. No app permissions needed.
 
 ---
 
 ## Offline Strategy
 
-1. **All scans** are saved to SQLite immediately (regardless of connectivity)
+1. **All scans** are saved to IndexedDB immediately (regardless of connectivity)
 2. Each lead has a `syncStatus` field: `pending` | `exported` | `saved_to_contacts`
-3. Offline scans are stored and available for export once device is ready
+3. Service worker caches app shell + Tesseract.js WASM for full offline use
 4. User sees a banner: "X leads pending export" on home screen
 
 ---
@@ -380,110 +383,118 @@ Using `expo-contacts` `addContactAsync`:
 ## Project Structure
 
 ```
-weaselleads/
-├── app.json                    # Expo config
+musteleads/
+├── package.json
+├── next.config.js              # Next.js + PWA config
+├── tailwind.config.ts
+├── tsconfig.json
+├── public/
+│   ├── manifest.json           # PWA manifest
+│   ├── sw.js                   # Service worker
+│   ├── icons/                  # App icons (Coder brand)
+│   └── favicon.ico
 ├── src/
-│   ├── app/                    # Navigation + screen layout
-│   │   ├── _layout.tsx
-│   │   ├── index.tsx           # HomeScreen
-│   │   ├── scanner.tsx
+│   ├── app/                    # Next.js App Router
+│   │   ├── layout.tsx          # Root layout (nav, theme)
+│   │   ├── page.tsx            # HomeScreen
+│   │   ├── scanner/
+│   │   │   └── page.tsx        # ScannerScreen (badge/card toggle)
 │   │   ├── leads/
-│   │   │   ├── index.tsx       # LeadListScreen
-│   │   │   └── [id].tsx        # LeadDetailScreen
-│   │   ├── review.tsx          # LeadReviewScreen
-│   │   ├── cipher-lab.tsx      # Cipher Lab screen
-│   │   ├── events.tsx
-│   │   └── settings.tsx
+│   │   │   ├── page.tsx        # LeadListScreen
+│   │   │   └── [id]/
+│   │   │       └── page.tsx    # LeadDetailScreen
+│   │   ├── review/
+│   │   │   └── page.tsx        # LeadReviewScreen
+│   │   ├── cipher-lab/
+│   │   │   └── page.tsx        # Cipher Lab screen
+│   │   ├── events/
+│   │   │   └── page.tsx
+│   │   └── settings/
+│   │       └── page.tsx
+│   ├── components/
+│   │   ├── CameraView.tsx      # Shared camera with mode toggle
+│   │   ├── ScanModeToggle.tsx   # Badge / Card mode switch
+│   │   ├── CardCaptureView.tsx  # Card-shaped overlay guide
+│   │   ├── LeadForm.tsx        # Lead edit form (shared)
+│   │   └── ExportDialog.tsx    # CSV export filter + download
 │   ├── scanner/
-│   │   ├── CameraView.tsx          # Shared camera with mode toggle
-│   │   ├── ScanModeToggle.tsx      # Badge / Card mode switch
-│   │   ├── QRProcessor.ts          # QR decode + route to parser
+│   │   ├── QRProcessor.ts
 │   │   ├── VCardParser.ts
 │   │   ├── MeCardParser.ts
 │   │   ├── TextParser.ts
-│   │   ├── BadgeOCRFallback.ts     # OCR on badge face (name/company/title)
-│   │   ├── CardCaptureView.tsx     # Card-shaped overlay guide
-│   │   ├── CardOCRProcessor.ts     # Business card OCR pipeline
-│   │   ├── ContactExtractor.ts     # Regex: email, phone, URL, address
-│   │   ├── NameExtractor.ts        # Largest text block → name
-│   │   ├── TitleExtractor.ts       # Job title keyword heuristic
-│   │   └── CardImageStore.ts       # Save card photo with lead record
+│   │   ├── BadgeOCRFallback.ts
+│   │   ├── CardOCRProcessor.ts
+│   │   ├── ContactExtractor.ts
+│   │   ├── NameExtractor.ts
+│   │   └── TitleExtractor.ts
 │   ├── cipher/
-│   │   ├── CipherLab.ts         # Pair collection + storage
-│   │   ├── PatternAnalyzer.ts   # Algorithm detection engine
-│   │   ├── CipherProfiles.ts    # Event cipher profile CRUD
+│   │   ├── CipherLab.ts
+│   │   ├── PatternAnalyzer.ts
+│   │   ├── CipherProfiles.ts
 │   │   ├── decoders/
 │   │   │   ├── Base64Decoder.ts
 │   │   │   ├── DelimiterDecoder.ts
 │   │   │   ├── SubstitutionDecoder.ts
 │   │   │   ├── AESDecoder.ts
 │   │   │   └── LookupDecoder.ts
-│   │   └── CipherExport.ts      # Import/export profiles
+│   │   └── CipherExport.ts
 │   ├── leads/
-│   │   ├── LeadStore.ts
-│   │   ├── LeadDB.ts
+│   │   ├── LeadStore.ts        # Zustand store
+│   │   ├── LeadDB.ts           # Dexie.js IndexedDB wrapper
 │   │   └── TagManager.ts
-│   ├── salesforce/              # Phase 2
-│   │   ├── SFAuth.ts
-│   │   ├── SFLeadAPI.ts
-│   │   └── SyncQueue.ts
 │   ├── export/
-│   │   ├── CSVExporter.ts
-│   │   ├── ShareService.ts
+│   │   ├── CSVExporter.ts      # PapaParse CSV generation
+│   │   ├── VCardGenerator.ts   # .vcf file generation for contacts
 │   │   └── ExportHistory.ts
-│   ├── contacts/
-│   │   └── ContactsService.ts
 │   ├── offline/
-│   │   ├── ConnectivityMonitor.ts
-│   │   ├── SyncManager.ts
-│   │   └── ConflictResolver.ts
+│   │   └── ServiceWorkerReg.ts # SW registration + cache management
 │   ├── types/
 │   │   └── Lead.ts
 │   └── utils/
-│       ├── permissions.ts
-│       └── secureStorage.ts
-├── assets/
-├── package.json
-└── tsconfig.json
+│       └── permissions.ts      # Camera permission handling
+├── .gitignore
+└── README.md
 ```
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Core MVP — Google Next Sprint (14 days, Apr 8-22)
-- [ ] Project scaffold (Expo + TypeScript + NativeWind)
-- [ ] Camera + QR scanning (react-native-vision-camera)
+### Phase 1: Core MVP — Mobile Web PWA, Google Next Sprint (14 days, Apr 8-22)
+- [ ] Project scaffold (Next.js + TypeScript + Tailwind CSS + PWA)
+- [ ] Camera + QR scanning (html5-qrcode + Web Camera API)
 - [ ] Scanner mode toggle: Badge QR / Business Card
 - [ ] vCard + MeCard + plain-text parsers
-- [ ] Business card OCR pipeline (name, company, title, email, phone extraction)
-- [ ] Card image capture + storage alongside lead record
-- [ ] OCR fallback (ML Kit text recognition)
+- [ ] Business card OCR pipeline via Tesseract.js (name, company, title, email, phone extraction)
+- [ ] Card image capture + IndexedDB storage alongside lead record
+- [ ] OCR fallback (Tesseract.js in-browser)
 - [ ] Cipher Lab: encrypted QR reverse-engineering mode
   - [ ] Pair collection screen (scan QR + enter plaintext)
   - [ ] Pattern analysis engine (base64, delimiter, substitution, AES, lookup)
   - [ ] Event cipher profiles (persist + auto-apply)
   - [ ] Export/import cipher profiles between devices
 - [ ] Lead review/edit screen (email required)
-- [ ] SQLite local storage
+- [ ] IndexedDB local storage (Dexie.js)
 - [ ] Lead list + detail screens
 - [ ] CSV export (Salesforce Data Import Wizard compatible)
-- [ ] Phone Contacts save
-- [ ] Offline storage + export
+- [ ] Phone Contacts save (vCard .vcf download)
+- [ ] PWA offline support (service worker + IndexedDB)
 - [ ] Basic settings screen
-- [ ] Coder brand theming (Black/White, coder.com/brand)
-- [ ] App Store submission (iOS first)
+- [ ] Coder brand theming (Black/White, coder.com/brand), mobile-first responsive
+- [ ] Deploy to Vercel/Cloudflare Pages
 
-> **Google Next scope**: Badge QR scanning, business card OCR, lead review, SQLite storage, CSV export, and phone contacts save. Cipher Lab can ship as v1.1 update after the event.
+> **Google Next scope**: Badge QR scanning, business card OCR, lead review, IndexedDB storage, CSV export, and vCard contact download. PWA installable on phone home screen. Cipher Lab can ship as v1.1 update after the event.
 
-### Phase 2: CRM + Enhancements
+### Phase 2: Native Apps + CRM
+- [ ] Native iOS app (React Native — reuse TypeScript business logic)
+- [ ] Apple Developer Account enrollment + App Store submission
 - [ ] Salesforce OAuth 2.0 PKCE + REST API lead creation
 - [ ] Direct Salesforce sync with de-duplication
 - [ ] Digital business card sharing (your own QR/NFC card)
 - [ ] Data enrichment (Clearbit / Apollo API integration)
 - [ ] Automated follow-up email triggers
 - [ ] Event/campaign grouping
-- [ ] Google Play submission
+- [ ] Google Play submission (Android native)
 
 ### Phase 3: Team & Enterprise
 - [ ] Multi-user support with roles
@@ -498,46 +509,48 @@ weaselleads/
 
 | Package | Purpose | Version |
 |---|---|---|
-| `expo` | Framework | ~52.x |
-| `react-native-vision-camera` | Camera + QR scanning | ^4.x |
-| `@react-native-ml-kit/text-recognition` | On-device OCR | ^2.x |
-| `expo-contacts` | Phone contacts R/W | ~14.x |
-| `expo-secure-store` | Secure token storage | ~14.x |
-| `expo-sqlite` | Local database | ~15.x |
-| `expo-sharing` | Share CSV via native share sheet | ~13.x |
-| `expo-file-system` | Write CSV files | ~18.x |
+| `next` | Framework (React) | ^15.x |
+| `html5-qrcode` | QR/barcode scanning via camera | ^2.x |
+| `tesseract.js` | In-browser OCR (WASM) | ^5.x |
+| `dexie` | IndexedDB wrapper (offline DB) | ^4.x |
 | `zustand` | State management | ^5.x |
-| `@react-navigation/native` | Navigation | ^7.x |
-| `nativewind` | Tailwind CSS for RN | ^4.x |
-| `@react-native-community/netinfo` | Connectivity detection | ^11.x |
+| `tailwindcss` | Styling | ^4.x |
+| `next-pwa` | PWA + service worker + offline | ^5.x |
+| `papaparse` | CSV generation | ^5.x |
 
 ---
 
-## Decision: Why Not Flutter / Native?
+## Decision: Why Web App (PWA) Instead of Native?
 
-- **React Native + Expo** chosen for fastest time-to-market with a single codebase
-- Expo's managed workflow handles camera permissions, contacts, and secure storage out of the box
-- Vision Camera is mature and supports the New Architecture
-- If native performance is needed later, Expo allows ejecting to bare workflow
+- **No app store friction**: Deploy instantly via URL. No Apple Developer account needed. No review process.
+- **Google Next in 14 days**: Web app ships faster than any native approach.
+- **Mobile-first PWA**: Add-to-home-screen gives app-like experience. Offline via service worker.
+- **Camera access**: Web Camera API + `html5-qrcode` handles QR scanning on mobile browsers.
+- **Contact save**: Generate .vcf download — mobile browsers prompt "Add to Contacts" natively.
+- **CSV export**: Blob download or Web Share API — no native file system needed.
+- **Phase 2**: When native apps are needed, the TypeScript business logic (parsers, cipher lab, lead management) ports directly to React Native.
 
 ---
 
 ## Resolved (All)
 
-1. **App Name**: WeaselLeads
+1. **App Name**: Musteleads
 2. **Salesforce**: CSV export in Phase 1; direct API integration in Phase 2.
 3. **Custom Fields**: Standard Lead fields + `Event_Name__c`, `Scanned_At__c` (custom). CSV headers pre-mapped.
 4. **Target Events**: See event calendar above. Primary platforms: **SPARGO** (AFCEA events), **Cvent** (SOF Week, DoDIIS), **GPJ** (Google Next), **AWS Events** (re:Invent).
 5. **Branding**: Coder brand — Black/White logo, per coder.com/brand. Press kit at github.com/coder/presskit.
 6. **Distribution**: App Store (iOS) first. Google Play in Phase 2.
-7. **Apple Developer Account**: Not yet enrolled. Must sign up ($99/yr) before App Store submission. For Google Next (Apr 22), use TestFlight or Expo dev build instead.
+7. **Apple Developer Account**: Not needed for Phase 1 (PWA). Deferred to Phase 2 alongside native iOS app.
 8. **Timeline**: MVP targeting Google Next (April 22). 14-day sprint.
 
-## Apple Developer Account — Action Required
+## Native App — Deferred to Phase 2
 
-App Store submission requires an Apple Developer Program membership ($99/year). Since there is no account yet, Phase 1 options:
+iOS and Android native apps are deferred to Phase 2. Phase 1 ships as a mobile-first Progressive Web App (PWA):
 
-- **For Google Next (Apr 22)**: Deploy via **Expo Dev Build** (install via QR code, no App Store needed) or **TestFlight** (requires Apple Developer account but skips App Store review).
-- **For public launch**: Enroll at https://developer.apple.com/programs/ — approval takes 24-48 hours for individuals.
+- **No app store account needed** — deploy via URL
+- **Installable** — "Add to Home Screen" on iOS Safari and Android Chrome gives app-like experience
+- **Offline-capable** — Service worker caches app shell and static assets
+- **Camera access** — Web Camera API works on mobile Safari (iOS 11+) and Chrome
+- **Contact save** — .vcf file download triggers native "Add to Contacts" prompt
 
-**Recommendation**: Enroll in Apple Developer Program now so TestFlight is available by Google Next. App Store submission can happen after the event.
+When ready for Phase 2, the TypeScript business logic (parsers, cipher lab, lead management) ports directly to React Native.
