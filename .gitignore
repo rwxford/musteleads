@@ -22,3 +22,5 @@ public/sw.js.map
 # IDE
 .vscode/
 .idea/
+eng.traineddata
+*.traineddata

@@ -44,6 +44,12 @@ function ReviewPageContent() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // OCR metadata from sessionStorage.
+  const [rawOCRText, setRawOCRText] = useState<string | null>(null);
+  const [ocrConfidence, setOcrConfidence] = useState<number | null>(null);
+  const [ocrTextOpen, setOcrTextOpen] = useState(false);
+  const [sessionSource, setSessionSource] = useState<string | null>(null);
+
   // Pre-fill from scan data or from an existing lead being edited.
   useEffect(() => {
     loadLeads();
@@ -69,7 +75,48 @@ function ReviewPageContent() {
       return;
     }
 
-    // Pre-fill from QR scan data.
+    // Pre-fill from sessionStorage scan result.
+    try {
+      const stored = sessionStorage.getItem('musteleads:scan-result');
+      if (stored) {
+        const data = JSON.parse(stored);
+
+        // Track the source for the save action.
+        if (data.source) {
+          setSessionSource(data.source);
+        }
+
+        // OCR metadata.
+        if (data.rawOCRText) {
+          setRawOCRText(data.rawOCRText);
+        }
+        if (typeof data.ocrConfidence === 'number') {
+          setOcrConfidence(data.ocrConfidence);
+        }
+
+        // Pre-fill contact fields.
+        if (data.contact) {
+          const c = data.contact;
+          setForm((prev) => ({
+            ...prev,
+            firstName: c.firstName || prev.firstName,
+            lastName: c.lastName || prev.lastName,
+            company: c.company || prev.company,
+            title: c.title || prev.title,
+            email: c.email || prev.email,
+            phone: c.phone || prev.phone,
+          }));
+        }
+
+        // Clean up so a page refresh doesn't re-read stale data.
+        sessionStorage.removeItem('musteleads:scan-result');
+        return;
+      }
+    } catch {
+      // sessionStorage may be unavailable.
+    }
+
+    // Pre-fill from QR scan data (legacy URL-param path).
     if (rawParam) {
       const result = processQRData(rawParam);
       if (result.contact) {
@@ -108,13 +155,15 @@ function ReviewPageContent() {
       const existing = leads.find((l) => l.id === editId);
       if (existing) return existing.source;
     }
+    // Prefer the source from sessionStorage over the URL param.
+    const src = sessionSource || sourceParam;
     if (
-      sourceParam === 'badge_qr' ||
-      sourceParam === 'business_card' ||
-      sourceParam === 'manual' ||
-      sourceParam === 'cipher_lab'
+      src === 'badge_qr' ||
+      src === 'business_card' ||
+      src === 'manual' ||
+      src === 'cipher_lab'
     ) {
-      return sourceParam;
+      return src;
     }
     return 'manual';
   }
@@ -193,6 +242,11 @@ function ReviewPageContent() {
       </h1>
       <p className="mt-1 text-xs text-white/40">
         Source: {resolveSource().replace('_', ' ')}
+        {ocrConfidence !== null && (
+          <span className="ml-2 rounded bg-zinc-800 px-1.5 py-0.5">
+            OCR: {Math.round(ocrConfidence)}% confident
+          </span>
+        )}
       </p>
 
       <form className="mt-6 flex flex-col gap-4" onSubmit={handleSave}>
@@ -280,6 +334,25 @@ function ReviewPageContent() {
             className="w-full rounded-lg border border-white/20 bg-white/5 px-3 py-2.5 text-sm outline-none transition-colors focus:border-white/60"
           />
         </div>
+
+        {/* Raw OCR text — collapsible reference section. */}
+        {rawOCRText && (
+          <div className="rounded-lg border border-white/10 bg-white/5">
+            <button
+              type="button"
+              onClick={() => setOcrTextOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between px-3 py-2.5 text-left text-xs font-medium text-white/60"
+            >
+              <span>Raw OCR Text</span>
+              <span className="text-white/30">{ocrTextOpen ? '▲' : '▼'}</span>
+            </button>
+            {ocrTextOpen && (
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap border-t border-white/10 px-3 py-2.5 text-xs text-white/50">
+                {rawOCRText}
+              </pre>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="mt-2 flex flex-col gap-3">

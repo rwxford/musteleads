@@ -3,17 +3,25 @@
 import { useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { processQRData } from '@/scanner/QRProcessor';
+import { processCardImage } from '@/scanner/CardOCRProcessor';
+import { processBadgeImage } from '@/scanner/BadgeOCRFallback';
 import CameraView from '@/components/CameraView';
 import CardCaptureView from '@/components/CardCaptureView';
 import ScanModeToggle from '@/components/ScanModeToggle';
+
+type ScanStatus = 'idle' | 'processing' | 'needs-ocr';
 
 export default function ScannerPage() {
   const router = useRouter();
   const [mode, setMode] = useState<'badge' | 'card'>('badge');
   const [banner, setBanner] = useState<string | null>(null);
+  const [scanStatus, setScanStatus] = useState<ScanStatus>('idle');
+  const [ocrConfidence, setOcrConfidence] = useState<number | null>(null);
 
   // Prevent double-processing while navigating.
   const processingRef = useRef(false);
+
+  // ── Badge QR scan handler ──────────────────────────────────────
 
   const handleQRScan = useCallback(
     (decodedText: string) => {
@@ -39,12 +47,10 @@ export default function ScannerPage() {
         }
         router.push('/review');
       } else {
-        setBanner('Could not decode QR. Try OCR or manual entry.');
-        // Allow another scan attempt after a short delay.
-        setTimeout(() => {
-          processingRef.current = false;
-          setBanner(null);
-        }, 3000);
+        // QR unreadable — offer OCR fallback.
+        setScanStatus('needs-ocr');
+        setBanner(null);
+        processingRef.current = false;
       }
     },
     [router],
@@ -56,35 +62,73 @@ export default function ScannerPage() {
     console.warn('[ScannerPage] QR error:', error);
   }, []);
 
-  const handleCardCapture = useCallback(
-    (imageBlob: Blob) => {
-      // Convert the Blob to a base64 data URL so it survives
-      // sessionStorage (Blobs are not serializable).
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        try {
-          sessionStorage.setItem(
-            'musteleads:scan-result',
-            JSON.stringify({
-              cardImageDataUrl: reader.result,
-              source: 'business_card',
-            }),
-          );
-        } catch {
-          // sessionStorage may be unavailable.
-        }
-        router.push('/review');
-      };
-      reader.readAsDataURL(imageBlob);
+  // ── Badge OCR fallback ─────────────────────────────────────────
+
+  const handleBadgeOCR = useCallback(
+    async (imageBlob: Blob) => {
+      setScanStatus('processing');
+      setBanner(null);
+
+      const result = await processBadgeImage(imageBlob);
+      setOcrConfidence(result.confidence);
+
+      try {
+        sessionStorage.setItem(
+          'musteleads:scan-result',
+          JSON.stringify({
+            contact: result.contact,
+            rawOCRText: result.rawText,
+            ocrConfidence: result.confidence,
+            source: 'badge_qr',
+          }),
+        );
+      } catch {
+        // sessionStorage may be unavailable.
+      }
+      router.push('/review');
     },
     [router],
   );
 
+  // ── Business card capture + OCR ────────────────────────────────
+
+  const handleCardCapture = useCallback(
+    async (imageBlob: Blob) => {
+      setScanStatus('processing');
+      setBanner(null);
+
+      const result = await processCardImage(imageBlob);
+      setOcrConfidence(result.confidence);
+
+      try {
+        sessionStorage.setItem(
+          'musteleads:scan-result',
+          JSON.stringify({
+            contact: result.contact,
+            rawOCRText: result.rawText,
+            ocrConfidence: result.confidence,
+            source: 'business_card',
+          }),
+        );
+      } catch {
+        // sessionStorage may be unavailable.
+      }
+      router.push('/review');
+    },
+    [router],
+  );
+
+  // ── Mode switching ─────────────────────────────────────────────
+
   const handleModeChange = useCallback((newMode: 'badge' | 'card') => {
     processingRef.current = false;
     setBanner(null);
+    setScanStatus('idle');
+    setOcrConfidence(null);
     setMode(newMode);
   }, []);
+
+  // ── Rendering ──────────────────────────────────────────────────
 
   return (
     <div className="flex min-h-screen flex-col items-center gap-6 px-4 pt-6">
@@ -97,16 +141,45 @@ export default function ScannerPage() {
         </div>
       )}
 
+      {/* Processing overlay. */}
+      {scanStatus === 'processing' && (
+        <div className="w-full max-w-md rounded-xl bg-zinc-800 px-4 py-4 text-center">
+          <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+          <p className="text-sm text-white/80">Processing with OCR…</p>
+          <p className="mt-1 text-xs text-white/40">This may take a few seconds.</p>
+        </div>
+      )}
+
+      {/* OCR confidence indicator. */}
+      {ocrConfidence !== null && scanStatus !== 'processing' && (
+        <div className="rounded-full bg-zinc-800 px-3 py-1 text-xs text-white/60">
+          OCR: {Math.round(ocrConfidence)}% confident
+        </div>
+      )}
+
       <div className="w-full max-w-md">
         {mode === 'badge' ? (
-          <CameraView
-            isActive={mode === 'badge'}
-            onScanSuccess={handleQRScan}
-            onScanError={handleQRError}
-          />
+          scanStatus === 'needs-ocr' ? (
+            // Badge OCR fallback — capture badge face photo.
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-full rounded-xl bg-zinc-800 px-4 py-3 text-center text-sm text-white/80">
+                QR unreadable — scan badge text with OCR instead.
+              </div>
+              <CardCaptureView
+                isActive
+                onCapture={handleBadgeOCR}
+              />
+            </div>
+          ) : (
+            <CameraView
+              isActive={mode === 'badge' && scanStatus === 'idle'}
+              onScanSuccess={handleQRScan}
+              onScanError={handleQRError}
+            />
+          )
         ) : (
           <CardCaptureView
-            isActive={mode === 'card'}
+            isActive={mode === 'card' && scanStatus !== 'processing'}
             onCapture={handleCardCapture}
           />
         )}
@@ -114,7 +187,9 @@ export default function ScannerPage() {
 
       <p className="max-w-xs text-center text-xs text-white/30">
         {mode === 'badge'
-          ? 'Point your camera at a badge QR code to scan.'
+          ? scanStatus === 'needs-ocr'
+            ? 'Take a photo of the badge face so OCR can read the text.'
+            : 'Point your camera at a badge QR code to scan.'
           : 'Align the business card inside the frame and tap Capture.'}
       </p>
     </div>
