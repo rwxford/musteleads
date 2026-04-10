@@ -5,9 +5,9 @@
     </clipPath>
   </defs>
   <g clip-path="url(#icon-clip)">
-    <rect width="512" height="512" fill="#000"/>
+    <rect width="512" height="512" fill="#fff"/>
     
-    <g fill="#fff">
+    <g fill="#000">
       <!-- Body — sleek elongated ellipse, slight rightward tilt -->
       <ellipse cx="240" cy="296" rx="38" ry="136"
                transform="rotate(-2 240 296)"/>
@@ -45,8 +45,8 @@
     </g>
 
     <!-- Eye -->
-    <circle cx="298" cy="116" r="7" fill="#000"/>
+    <circle cx="298" cy="116" r="7" fill="#fff"/>
     <!-- Nose tip -->
-    <circle cx="346" cy="138" r="3" fill="#000"/>
+    <circle cx="346" cy="138" r="3" fill="#fff"/>
   </g>
 </svg>
