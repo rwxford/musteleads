@@ -114,17 +114,22 @@ export async function processCardImage(
   }
 
   // ── Name detection ────────────────────────────────────────────
-  // Prefer lines that look like a person's name. Among those,
-  // pick the longest one (badge names tend to be prominent).
+  // Prefer lines that look like a person's name. Badges often
+  // split first/last across two lines, so we merge consecutive
+  // single-word name candidates before choosing.
   const nameCandidates = cleanLines.filter(
     (_, i) => !consumed.has(i),
   );
 
-  // First pass: look for lines that pass the isLikelyName check.
   const likelyNames = nameCandidates.filter((c) => isLikelyName(c));
-  if (likelyNames.length > 0) {
-    // Pick the longest match — usually the full name line.
-    const best = likelyNames.reduce((a, b) =>
+
+  // Merge consecutive single-word name lines (e.g., "Ross" +
+  // "Weatherford" on a badge become "Ross Weatherford").
+  const mergedNames = mergeConsecutiveNameLines(likelyNames, cleanLines, consumed);
+
+  if (mergedNames.length > 0) {
+    // Pick the longest match — usually the full name.
+    const best = mergedNames.reduce((a, b) =>
       a.length >= b.length ? a : b,
     );
     const words = best.split(/\s+/).filter(Boolean);
@@ -132,17 +137,19 @@ export async function processCardImage(
     contact.lastName = words.slice(1).join(' ') || undefined;
     contact.fullName = best;
   } else {
-    // Fallback: first unconsumed line with 2-3 words.
+    // Fallback: first unconsumed line with 1+ words.
     for (const candidate of nameCandidates) {
       const words = candidate.split(/\s+/).filter(Boolean);
-      if (words.length >= 2 && words.length <= 3) {
+      if (words.length >= 2) {
         contact.firstName = words[0];
         contact.lastName = words.slice(1).join(' ');
         contact.fullName = candidate;
         break;
       }
       if (words.length === 1) {
-        contact.lastName = words[0];
+        // Single word with no other name lines — treat as
+        // firstName so the user only has to fill in lastName.
+        contact.firstName = words[0];
         contact.fullName = words[0];
         break;
       }
@@ -165,4 +172,47 @@ const URL_LINE_RE = /^https?:\/\//i;
 function lineIsEmailOrPhoneOrUrl(line: string): boolean {
   const t = line.trim();
   return EMAIL_LINE_RE.test(t) || PHONE_LINE_RE.test(t) || URL_LINE_RE.test(t);
+}
+
+/**
+ * Merge consecutive single-word name lines that appear next to each
+ * other in the original OCR output. Badges commonly split first and
+ * last names across two lines (e.g., "Ross" then "Weatherford").
+ *
+ * Returns an array of merged name strings. Multi-word name lines
+ * that already contain the full name are passed through as-is.
+ */
+function mergeConsecutiveNameLines(
+  nameLines: string[],
+  allLines: string[],
+  consumed: Set<number>,
+): string[] {
+  if (nameLines.length === 0) return [];
+
+  // Build a list of (line text, original index in allLines).
+  const indexed: { text: string; idx: number }[] = [];
+  for (let i = 0; i < allLines.length; i++) {
+    if (consumed.has(i)) continue;
+    if (nameLines.includes(allLines[i])) {
+      indexed.push({ text: allLines[i].trim(), idx: i });
+    }
+  }
+
+  if (indexed.length === 0) return [];
+
+  // Group consecutive indices.
+  const groups: string[][] = [];
+  let current: string[] = [indexed[0].text];
+  for (let i = 1; i < indexed.length; i++) {
+    if (indexed[i].idx === indexed[i - 1].idx + 1) {
+      current.push(indexed[i].text);
+    } else {
+      groups.push(current);
+      current = [indexed[i].text];
+    }
+  }
+  groups.push(current);
+
+  // Merge each group into a single string.
+  return groups.map((g) => g.join(' '));
 }

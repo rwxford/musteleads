@@ -89,44 +89,38 @@ export async function processBadgeImage(
     }
   }
 
-  // The first non-company, non-title line that looks like a name
-  // is most likely the attendee name.
+  // Name detection — badges often split first/last name across
+  // two lines ("Ross" then "Weatherford"). Collect consecutive
+  // name-like lines and merge them.
+  const nameLines: string[] = [];
   for (const line of topLines) {
     if (line === contact.company) continue;
     if (line === contact.title) continue;
-
-    // Prefer lines that pass the name heuristic.
-    if (!isLikelyName(line)) continue;
-
-    const words = line.split(/\s+/).filter(Boolean);
-    if (words.length === 0) continue;
-
-    if (words.length >= 2) {
-      contact.firstName = words[0];
-      contact.lastName = words.slice(1).join(' ');
-    } else {
-      contact.lastName = words[0];
+    if (isLikelyName(line)) {
+      nameLines.push(line.trim());
+    } else if (nameLines.length > 0) {
+      // Stop collecting once we hit a non-name line after finding
+      // at least one name line (names are grouped together).
+      break;
     }
-    contact.fullName = line;
-    break;
   }
 
-  // If no name was found via the strict heuristic, fall back to
-  // the first unconsumed line with at least one word.
-  if (!contact.fullName) {
+  if (nameLines.length > 0) {
+    // Merge all consecutive name lines into one string.
+    const merged = nameLines.join(' ');
+    const words = merged.split(/\s+/).filter(Boolean);
+    contact.firstName = words[0];
+    contact.lastName = words.slice(1).join(' ') || undefined;
+    contact.fullName = merged;
+  } else {
+    // Fallback: first non-company, non-title line.
     for (const line of topLines) {
       if (line === contact.company) continue;
       if (line === contact.title) continue;
-
       const words = line.split(/\s+/).filter(Boolean);
       if (words.length === 0) continue;
-
-      if (words.length >= 2) {
-        contact.firstName = words[0];
-        contact.lastName = words.slice(1).join(' ');
-      } else {
-        contact.lastName = words[0];
-      }
+      contact.firstName = words[0];
+      contact.lastName = words.slice(1).join(' ') || undefined;
       contact.fullName = line;
       break;
     }
