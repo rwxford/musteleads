@@ -6,7 +6,14 @@
 
 import type { ParsedContact } from './VCardParser';
 import { recognizeImage } from './OCREngine';
-import { isLikelyCompany, extractEmails } from './ContactExtractor';
+import {
+  isLikelyCompany,
+  extractEmails,
+  isGarbageLine,
+  isEventBranding,
+  isLikelyName,
+  isLikelyJobTitle,
+} from './ContactExtractor';
 
 export interface BadgeOCRResult {
   contact: ParsedContact;
@@ -18,10 +25,12 @@ export interface BadgeOCRResult {
  * OCR a badge-face photo and extract name + company.
  *
  * Strategy:
- * 1. OCR the badge image.
- * 2. Take the top 2-4 lines (badges have large, sparse text).
- * 3. First non-company line = name.
- * 4. Line matching company pattern = company.
+ * 1. OCR the badge image (pre-processing is handled by OCREngine).
+ * 2. Filter garbage and event branding lines.
+ * 3. From the remaining top lines, detect company (explicit
+ *    keywords or short ALL-CAPS line).
+ * 4. First non-company, non-title line that passes the name
+ *    heuristic = attendee name.
  * 5. Optionally extract email if visible.
  */
 export async function processBadgeImage(
@@ -37,21 +46,58 @@ export async function processBadgeImage(
 
   const fullText = ocr.text;
 
+  // Filter garbage and event branding before any classification.
+  const cleanLines = ocr.lines.filter(
+    (line) => !isGarbageLine(line) && !isEventBranding(line),
+  );
+
   // Badges have large, sparse text — focus on the first few
   // lines which almost always contain name and company.
-  const topLines = ocr.lines.slice(0, 4);
+  const topLines = cleanLines.slice(0, 6);
 
   // Try to detect company first so we can exclude it from the
-  // name candidate pool.
+  // name candidate pool. Check explicit keywords first, then
+  // fall back to short ALL-CAPS lines.
   for (const line of topLines) {
-    if (!contact.company && isLikelyCompany(line)) {
+    if (contact.company) break;
+
+    if (isLikelyCompany(line)) {
       contact.company = line;
+      continue;
+    }
+
+    // Short ALL-CAPS line (1-3 words) that isn't a title keyword
+    // is likely a company name (e.g. "CODER").
+    const words = line.trim().split(/\s+/);
+    if (
+      words.length >= 1 &&
+      words.length <= 3 &&
+      line === line.toUpperCase() &&
+      /^[A-Z\s]+$/.test(line.trim()) &&
+      !isLikelyJobTitle(line)
+    ) {
+      contact.company = line.trim();
     }
   }
 
-  // The first non-company line is most likely the attendee name.
+  // Detect job title.
   for (const line of topLines) {
     if (line === contact.company) continue;
+    if (isLikelyJobTitle(line)) {
+      contact.title = line;
+      break;
+    }
+  }
+
+  // The first non-company, non-title line that looks like a name
+  // is most likely the attendee name.
+  for (const line of topLines) {
+    if (line === contact.company) continue;
+    if (line === contact.title) continue;
+
+    // Prefer lines that pass the name heuristic.
+    if (!isLikelyName(line)) continue;
+
     const words = line.split(/\s+/).filter(Boolean);
     if (words.length === 0) continue;
 
@@ -63,6 +109,27 @@ export async function processBadgeImage(
     }
     contact.fullName = line;
     break;
+  }
+
+  // If no name was found via the strict heuristic, fall back to
+  // the first unconsumed line with at least one word.
+  if (!contact.fullName) {
+    for (const line of topLines) {
+      if (line === contact.company) continue;
+      if (line === contact.title) continue;
+
+      const words = line.split(/\s+/).filter(Boolean);
+      if (words.length === 0) continue;
+
+      if (words.length >= 2) {
+        contact.firstName = words[0];
+        contact.lastName = words.slice(1).join(' ');
+      } else {
+        contact.lastName = words[0];
+      }
+      contact.fullName = line;
+      break;
+    }
   }
 
   // Optionally pick up an email if visible anywhere on the badge.

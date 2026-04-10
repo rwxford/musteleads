@@ -47,7 +47,11 @@ export default function CardCaptureView({ onCapture, isActive }: CardCaptureView
 
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' },
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
         });
 
         if (cancelled) {
@@ -112,7 +116,8 @@ export default function CardCaptureView({ onCapture, isActive }: CardCaptureView
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
 
-    // Draw the current video frame onto the offscreen canvas.
+    // Use the video's actual resolution (not the CSS display
+    // size) so OCR gets the highest quality input available.
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');

@@ -9,7 +9,7 @@ import CameraView from '@/components/CameraView';
 import CardCaptureView from '@/components/CardCaptureView';
 import ScanModeToggle from '@/components/ScanModeToggle';
 
-type ScanStatus = 'idle' | 'processing' | 'needs-ocr';
+type ScanStatus = 'idle' | 'processing' | 'needs-ocr' | 'badge-photo';
 
 export default function ScannerPage() {
   const router = useRouter();
@@ -159,11 +159,13 @@ export default function ScannerPage() {
 
       <div className="w-full max-w-md">
         {mode === 'badge' ? (
-          scanStatus === 'needs-ocr' ? (
+          scanStatus === 'needs-ocr' || scanStatus === 'badge-photo' ? (
             // Badge OCR fallback — capture badge face photo.
             <div className="flex flex-col items-center gap-4">
               <div className="w-full rounded-xl bg-zinc-800 px-4 py-3 text-center text-sm text-white/80">
-                QR unreadable — scan badge text with OCR instead.
+                {scanStatus === 'needs-ocr'
+                  ? 'QR unreadable — scan badge text with OCR instead.'
+                  : 'Take a photo of the badge face.'}
               </div>
               <CardCaptureView
                 isActive
@@ -171,11 +173,21 @@ export default function ScannerPage() {
               />
             </div>
           ) : (
-            <CameraView
-              isActive={mode === 'badge' && scanStatus === 'idle'}
-              onScanSuccess={handleQRScan}
-              onScanError={handleQRError}
-            />
+            <div className="flex flex-col items-center gap-4">
+              <CameraView
+                isActive={mode === 'badge' && scanStatus === 'idle'}
+                onScanSuccess={handleQRScan}
+                onScanError={handleQRError}
+              />
+              {/* Allow photographing the badge directly without
+                  waiting for a QR failure. */}
+              <button
+                onClick={() => setScanStatus('badge-photo')}
+                className="rounded-full border border-white/20 px-5 py-2 text-sm font-medium text-white/70 transition-colors hover:bg-white/10"
+              >
+                No QR code? Tap to photograph badge
+              </button>
+            </div>
           )
         ) : (
           <CardCaptureView
@@ -187,7 +199,7 @@ export default function ScannerPage() {
 
       <p className="max-w-xs text-center text-xs text-white/30">
         {mode === 'badge'
-          ? scanStatus === 'needs-ocr'
+          ? scanStatus === 'needs-ocr' || scanStatus === 'badge-photo'
             ? 'Take a photo of the badge face so OCR can read the text.'
             : 'Point your camera at a badge QR code to scan.'
           : 'Align the business card inside the frame and tap Capture.'}

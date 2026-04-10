@@ -163,6 +163,64 @@ export function isLikelyCompany(text: string): boolean {
   });
 }
 
+// ── New helper functions ──────────────────────────────────────────
+
+/**
+ * Check if a line is OCR garbage (noise, too short, mostly symbols).
+ */
+export function isGarbageLine(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length < 2) return true;
+  // Count alpha characters.
+  const alphaCount = (trimmed.match(/[a-zA-Z]/g) || []).length;
+  // If less than 40% alphabetic, it's garbage (unless it's a
+  // phone or email).
+  if (alphaCount / trimmed.length < 0.4) {
+    if (extractEmails(trimmed).length > 0 || extractPhones(trimmed).length > 0) return false;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Check if a line is event branding/decoration (not contact info).
+ */
+export function isEventBranding(text: string): boolean {
+  const brandingKeywords = [
+    'SUMMIT', 'CONFERENCE', 'EXPO', 'SYMPOSIUM', 'FORUM', 'CONVENTION',
+    'SPONSORED', 'PRESENTS', 'WELCOME', 'HOSTED BY', 'POWERED BY',
+    'REVOLUTION', 'ENTERPRISE', 'ANNUAL', 'INTERNATIONAL', 'NATIONAL',
+    'REGISTER', 'BADGE', 'ATTENDEE', 'SPEAKER', 'EXHIBITOR', 'VIP',
+    'DAY 1', 'DAY 2', 'DAY 3',
+  ];
+  const upper = text.trim().toUpperCase();
+  // If the line is mostly branding keywords.
+  const words = upper.split(/\s+/);
+  const brandingWordCount = words.filter(w =>
+    brandingKeywords.some(kw => w.includes(kw) || kw.includes(w))
+  ).length;
+  return brandingWordCount >= words.length * 0.5;
+}
+
+/**
+ * Check if a line looks like a person's name.
+ * 2-3 words, each starting with uppercase (or all-caps), no
+ * company/title indicators.
+ */
+export function isLikelyName(text: string): boolean {
+  const trimmed = text.trim();
+  const words = trimmed.split(/\s+/);
+  if (words.length < 1 || words.length > 4) return false;
+  // Each word should start with uppercase or be all-caps.
+  const allCapitalized = words.every(w => /^[A-Z]/.test(w));
+  if (!allCapitalized) return false;
+  // Should NOT be a company or title.
+  if (isLikelyCompany(trimmed) || isLikelyJobTitle(trimmed)) return false;
+  // Should not contain numbers.
+  if (/\d/.test(trimmed)) return false;
+  return true;
+}
+
 // ── Internal helpers ──────────────────────────────────────────────
 
 function escapeRegex(s: string): string {
