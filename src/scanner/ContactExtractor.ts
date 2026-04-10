@@ -166,6 +166,20 @@ export function isLikelyCompany(text: string): boolean {
 // ── New helper functions ──────────────────────────────────────────
 
 /**
+ * Strip common OCR punctuation artifacts from line edges.
+ * Tesseract often misreads badge holder edges, plastic frames,
+ * and decorative elements as punctuation like }, |, ~, ], etc.
+ */
+export function cleanOCRLine(text: string): string {
+  // Strip leading/trailing non-alphanumeric characters except
+  // those that legitimately appear in contact data (+, @, ., -).
+  return text
+    .replace(/^[^a-zA-Z0-9+@]+/, '')
+    .replace(/[^a-zA-Z0-9.)+@]+$/, '')
+    .trim();
+}
+
+/**
  * Check if a line is OCR garbage (noise, too short, mostly symbols).
  */
 export function isGarbageLine(text: string): boolean {

@@ -14,7 +14,9 @@ import {
   isGarbageLine,
   isEventBranding,
   isLikelyName,
+  cleanOCRLine,
 } from './ContactExtractor';
+
 
 export interface CardOCRResult {
   contact: ParsedContact;
@@ -48,10 +50,10 @@ export async function processCardImage(
 
   const fullText = ocr.text;
 
-  // ── Filter garbage and branding lines ─────────────────────────
-  const cleanLines = ocr.lines.filter(
-    (line) => !isGarbageLine(line) && !isEventBranding(line),
-  );
+  // ── Clean, filter garbage and branding lines ─────────────────
+  const cleanLines = ocr.lines
+    .map(cleanOCRLine)
+    .filter((line) => line.length > 0 && !isGarbageLine(line) && !isEventBranding(line));
 
   // ── High-confidence regex fields ──────────────────────────────
   const emails = extractEmails(fullText);

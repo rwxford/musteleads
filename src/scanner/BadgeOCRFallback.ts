@@ -13,7 +13,9 @@ import {
   isEventBranding,
   isLikelyName,
   isLikelyJobTitle,
+  cleanOCRLine,
 } from './ContactExtractor';
+
 
 export interface BadgeOCRResult {
   contact: ParsedContact;
@@ -46,10 +48,10 @@ export async function processBadgeImage(
 
   const fullText = ocr.text;
 
-  // Filter garbage and event branding before any classification.
-  const cleanLines = ocr.lines.filter(
-    (line) => !isGarbageLine(line) && !isEventBranding(line),
-  );
+  // Clean OCR artifacts, then filter garbage and event branding.
+  const cleanLines = ocr.lines
+    .map(cleanOCRLine)
+    .filter((line) => line.length > 0 && !isGarbageLine(line) && !isEventBranding(line));
 
   // Badges have large, sparse text — focus on the first few
   // lines which almost always contain name and company.
