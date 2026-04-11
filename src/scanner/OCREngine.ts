@@ -176,6 +176,106 @@ export async function recognizeImage(
 }
 
 /**
+ * Create a new canvas rotated by the given degrees (90, 180, 270).
+ * Returns the rotated canvas.
+ */
+export function rotateCanvas(
+  canvas: HTMLCanvasElement,
+  degrees: number,
+): HTMLCanvasElement {
+  const rotated = document.createElement('canvas');
+  const ctx = rotated.getContext('2d');
+  if (!ctx) return canvas;
+
+  const radians = (degrees * Math.PI) / 180;
+
+  if (degrees === 90 || degrees === 270) {
+    rotated.width = canvas.height;
+    rotated.height = canvas.width;
+  } else {
+    rotated.width = canvas.width;
+    rotated.height = canvas.height;
+  }
+
+  ctx.translate(rotated.width / 2, rotated.height / 2);
+  ctx.rotate(radians);
+  ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+
+  return rotated;
+}
+
+/**
+ * Run OCR with automatic rotation detection. Tries 0° first,
+ * then 90° and 270° if confidence is below 60%. Returns the
+ * result with the highest confidence.
+ */
+export async function recognizeWithAutoRotate(
+  imageSource: Blob | string,
+): Promise<OCRResult> {
+  try {
+    const worker = await getWorker();
+
+    // Pre-process once and load into a canvas for rotation.
+    const processed = await preprocessImage(imageSource);
+
+    // Helper: run OCR on a data-URL and return the result.
+    const runOCR = async (dataUrl: string): Promise<OCRResult> => {
+      const { data } = await worker.recognize(dataUrl);
+      const text = (data.text ?? '').trim();
+      const lines = text
+        .split('\n')
+        .map((l: string) => l.trim())
+        .filter(Boolean);
+      return { text, confidence: data.confidence ?? 0, lines };
+    };
+
+    // Try 0° rotation first.
+    const result0 = await runOCR(processed);
+    if (result0.confidence >= 60) {
+      return result0;
+    }
+
+    // Load the processed image into a canvas for rotation.
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Failed to load processed image.'));
+      el.src = processed;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return result0;
+    ctx.drawImage(img, 0, 0);
+
+    let best = result0;
+
+    // Try 90° rotation (landscape badges).
+    const canvas90 = rotateCanvas(canvas, 90);
+    const result90 = await runOCR(canvas90.toDataURL('image/png'));
+    if (result90.confidence > best.confidence) {
+      best = result90;
+    }
+    if (best.confidence >= 60) {
+      return best;
+    }
+
+    // Try 270° rotation.
+    const canvas270 = rotateCanvas(canvas, 270);
+    const result270 = await runOCR(canvas270.toDataURL('image/png'));
+    if (result270.confidence > best.confidence) {
+      best = result270;
+    }
+
+    return best;
+  } catch (err) {
+    console.error('[OCREngine] recognizeWithAutoRotate failed:', err);
+    return EMPTY_RESULT;
+  }
+}
+
+/**
  * Terminate the cached worker and release resources. Safe to call
  * even if the worker was never created.
  */

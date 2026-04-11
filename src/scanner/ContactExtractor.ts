@@ -235,6 +235,30 @@ export function isLikelyName(text: string): boolean {
   return true;
 }
 
+/**
+ * Look through OCR lines for event branding patterns and return
+ * the longest branding line as the event name. Strips common
+ * filler words like "WELCOME TO", "PRESENTS", etc.
+ */
+export function extractEventName(lines: string[]): string | undefined {
+  const brandingLines = lines.filter((line) => isEventBranding(line));
+  if (brandingLines.length === 0) return undefined;
+
+  // Pick the longest branding line — most likely the event name.
+  const longest = brandingLines.reduce((a, b) =>
+    a.length >= b.length ? a : b,
+  );
+
+  // Clean up filler words.
+  const cleaned = longest
+    .trim()
+    .replace(/^(WELCOME\s+TO|PRESENTS|HOSTED\s+BY|POWERED\s+BY|SPONSORED\s+BY)\s*/i, '')
+    .replace(/\s*(PRESENTS|HOSTED\s+BY|POWERED\s+BY|SPONSORED\s+BY)$/i, '')
+    .trim();
+
+  return cleaned || undefined;
+}
+
 // ── Internal helpers ──────────────────────────────────────────────
 
 function escapeRegex(s: string): string {

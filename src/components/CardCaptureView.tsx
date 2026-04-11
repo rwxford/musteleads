@@ -12,6 +12,8 @@ type CaptureStatus = 'idle' | 'loading' | 'streaming' | 'preview' | 'permission-
 // Business card aspect ratio: 85.6mm × 53.98mm ≈ 1.586:1.
 const CARD_ASPECT = 85.6 / 53.98;
 
+const CAMERA_GRANT_KEY = 'musteleads_camera_granted';
+
 export default function CardCaptureView({ onCapture, isActive }: CardCaptureViewProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -39,11 +41,29 @@ export default function CardCaptureView({ onCapture, isActive }: CardCaptureView
       return;
     }
 
+    // If we already have a live stream, don't restart.
+    if (streamRef.current && status === 'streaming') {
+      return;
+    }
+
     let cancelled = false;
 
     const startCamera = async () => {
       setStatus('loading');
       setErrorMessage('');
+
+      // Check if camera permission is already granted so we can
+      // skip any custom permission UI.
+      try {
+        const permissionStatus = await navigator.permissions.query({
+          name: 'camera' as PermissionName,
+        });
+        if (permissionStatus.state === 'granted') {
+          // Permission already granted — no need for custom UI.
+        }
+      } catch {
+        // permissions.query may not be supported; continue normally.
+      }
 
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -67,6 +87,12 @@ export default function CardCaptureView({ onCapture, isActive }: CardCaptureView
         }
 
         if (!cancelled) {
+          // Camera started successfully — persist grant flag.
+          try {
+            localStorage.setItem(CAMERA_GRANT_KEY, 'true');
+          } catch {
+            // localStorage may be unavailable.
+          }
           setStatus('streaming');
         }
       } catch (err: unknown) {
@@ -95,9 +121,10 @@ export default function CardCaptureView({ onCapture, isActive }: CardCaptureView
       cancelled = true;
       stopStream();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, stopStream]);
 
-  // Clean up on unmount.
+  // Clean up on unmount only — don't stop on re-renders.
   useEffect(() => {
     return () => {
       stopStream();

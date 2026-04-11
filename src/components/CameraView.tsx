@@ -10,6 +10,8 @@ interface CameraViewProps {
 
 type ScannerStatus = 'idle' | 'loading' | 'scanning' | 'permission-denied' | 'error';
 
+const CAMERA_GRANT_KEY = 'musteleads_camera_granted';
+
 export default function CameraView({ onScanSuccess, onScanError, isActive }: CameraViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // We store the Html5Qrcode instance in a ref so it persists across
@@ -53,6 +55,19 @@ export default function CameraView({ onScanSuccess, onScanError, isActive }: Cam
       setStatus('loading');
       setErrorMessage('');
 
+      // Check if camera permission is already granted so we can
+      // skip any custom permission UI.
+      try {
+        const permissionStatus = await navigator.permissions.query({
+          name: 'camera' as PermissionName,
+        });
+        if (permissionStatus.state === 'granted') {
+          // Permission already granted — no need for custom UI.
+        }
+      } catch {
+        // permissions.query may not be supported; continue normally.
+      }
+
       try {
         const { Html5Qrcode } = await import('html5-qrcode');
         if (cancelled) return;
@@ -92,6 +107,12 @@ export default function CameraView({ onScanSuccess, onScanError, isActive }: Cam
         );
 
         if (!cancelled) {
+          // Camera started successfully — persist grant flag.
+          try {
+            localStorage.setItem(CAMERA_GRANT_KEY, 'true');
+          } catch {
+            // localStorage may be unavailable.
+          }
           setStatus('scanning');
         }
       } catch (err: unknown) {
@@ -122,10 +143,12 @@ export default function CameraView({ onScanSuccess, onScanError, isActive }: Cam
     };
   }, [isActive, stopScanner]);
 
-  // Clean up on unmount.
+  // Clean up on unmount — only stop the scanner here, not on
+  // re-renders.
   useEffect(() => {
     return () => {
       stopScanner();
+      scannerRef.current = null;
     };
   }, [stopScanner]);
 

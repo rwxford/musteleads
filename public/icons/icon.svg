@@ -1,52 +1,70 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <clipPath id="icon-clip">
-      <rect width="512" height="512" rx="96" ry="96"/>
+    <clipPath id="bg-clip">
+      <rect width="512" height="512" rx="80" ry="80"/>
     </clipPath>
   </defs>
-  <g clip-path="url(#icon-clip)">
+  <g clip-path="url(#bg-clip)">
+    <!-- Background -->
     <rect width="512" height="512" fill="#000"/>
-    
-    <g fill="#fff">
-      <!-- Body — sleek elongated ellipse, slight rightward tilt -->
-      <ellipse cx="240" cy="296" rx="38" ry="136"
-               transform="rotate(-2 240 296)"/>
 
-      <!-- Upper body / chest — smooth widening -->
-      <ellipse cx="252" cy="208" rx="34" ry="48"
-               transform="rotate(6 252 208)"/>
+    <!-- Chest bib - golden throat patch, prominent -->
+    <path d="M 192,370 L 256,468 L 320,370 Q 292,438 256,455 Q 220,438 192,370 Z" fill="#F5DEB3"/>
 
-      <!-- Neck — bridges head to body -->
-      <ellipse cx="262" cy="166" rx="28" ry="26"
-               transform="rotate(12 262 166)"/>
+    <!-- Ears - round, prominent, wider than head -->
+    <circle cx="148" cy="115" r="62" fill="#8B4513"/>
+    <circle cx="364" cy="115" r="62" fill="#8B4513"/>
+    <!-- Inner ears -->
+    <circle cx="148" cy="112" r="38" fill="#D2691E"/>
+    <circle cx="364" cy="112" r="38" fill="#D2691E"/>
+    <!-- Inner ear highlight -->
+    <circle cx="148" cy="108" r="20" fill="#E8985A" opacity="0.45"/>
+    <circle cx="364" cy="108" r="20" fill="#E8985A" opacity="0.45"/>
 
-      <!-- Head — tilted toward snout -->
-      <ellipse cx="284" cy="122" rx="38" ry="25"
-               transform="rotate(16 284 122)"/>
+    <!-- Head - marten: wide brow, tapers to narrow chin -->
+    <path d="
+      M 256,408
+      C 222,404 192,376 176,340
+      C 154,294 142,246 140,202
+      C 138,170 146,142 168,122
+      C 192,100 222,90 256,88
+      C 290,90 320,100 344,122
+      C 366,142 374,170 372,202
+      C 370,246 358,294 336,340
+      C 320,376 290,404 256,408
+      Z
+    " fill="#8B4513"/>
 
-      <!-- Snout — sleek, tapered -->
-      <ellipse cx="326" cy="132" rx="26" ry="11"
-               transform="rotate(20 326 132)"/>
+    <!-- Face center fur - lighter -->
+    <path d="
+      M 256,394
+      C 228,390 204,366 192,335
+      C 176,296 166,254 164,214
+      C 162,188 168,164 186,148
+      C 204,132 228,124 256,122
+      C 284,124 308,132 326,148
+      C 344,164 350,188 348,214
+      C 346,254 336,296 320,335
+      C 308,366 284,390 256,394
+      Z
+    " fill="#D2691E"/>
 
-      <!-- Ear — alert, pointed -->
-      <ellipse cx="252" cy="86" rx="9" ry="22"
-               transform="rotate(-8 252 86)"/>
+    <!-- Muzzle area -->
+    <ellipse cx="256" cy="332" rx="44" ry="36" fill="#F5DEB3"/>
 
-      <!-- Tail — elegant swoosh -->
-      <path d="
-        M 258,412
-        C 276,420 306,426 334,418
-        C 354,412 368,400 370,388
-        C 372,380 366,375 358,378
-        C 346,384 330,392 312,400
-        C 290,408 270,412 256,408
-        Z
-      "/>
-    </g>
+    <!-- Eyes -->
+    <circle cx="210" cy="230" r="24" fill="#2C1810"/>
+    <circle cx="302" cy="230" r="24" fill="#2C1810"/>
+    <!-- Eye shine -->
+    <circle cx="203" cy="222" r="7" fill="#FFF" opacity="0.35"/>
+    <circle cx="295" cy="222" r="7" fill="#FFF" opacity="0.35"/>
+    <circle cx="214" cy="237" r="3.5" fill="#FFF" opacity="0.12"/>
+    <circle cx="306" cy="237" r="3.5" fill="#FFF" opacity="0.12"/>
 
-    <!-- Eye -->
-    <circle cx="298" cy="116" r="7" fill="#000"/>
-    <!-- Nose tip -->
-    <circle cx="346" cy="138" r="3" fill="#000"/>
+    <!-- Nose -->
+    <path d="M 248,296 L 256,310 L 264,296 Q 256,292 248,296 Z" fill="#2C1810"/>
+
+    <!-- Smile -->
+    <path d="M 244,330 Q 256,340 268,330" fill="none" stroke="#D2691E" stroke-width="2.5" stroke-linecap="round"/>
   </g>
 </svg>

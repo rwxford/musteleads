@@ -108,6 +108,15 @@ function ReviewPageContent() {
           }));
         }
 
+        // Auto-populate event name: prefer user's default from
+        // settings, then fall back to OCR-detected event name.
+        const defaultEvent = localStorage.getItem('musteleads_default_event');
+        if (defaultEvent) {
+          setForm((prev) => ({ ...prev, eventName: defaultEvent }));
+        } else if (data.eventName) {
+          setForm((prev) => ({ ...prev, eventName: data.eventName }));
+        }
+
         // Clean up so a page refresh doesn't re-read stale data.
         sessionStorage.removeItem('musteleads:scan-result');
         return;

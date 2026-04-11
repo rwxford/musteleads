@@ -5,7 +5,7 @@
  */
 
 import type { ParsedContact } from './VCardParser';
-import { recognizeImage } from './OCREngine';
+import { recognizeWithAutoRotate } from './OCREngine';
 import {
   isLikelyCompany,
   extractEmails,
@@ -14,6 +14,7 @@ import {
   isLikelyName,
   isLikelyJobTitle,
   cleanOCRLine,
+  extractEventName,
 } from './ContactExtractor';
 
 
@@ -21,6 +22,7 @@ export interface BadgeOCRResult {
   contact: ParsedContact;
   rawText: string;
   confidence: number;
+  eventName?: string;
 }
 
 /**
@@ -38,7 +40,7 @@ export interface BadgeOCRResult {
 export async function processBadgeImage(
   imageBlob: Blob,
 ): Promise<BadgeOCRResult> {
-  const ocr = await recognizeImage(imageBlob);
+  const ocr = await recognizeWithAutoRotate(imageBlob);
 
   const contact: ParsedContact = {};
 
@@ -47,6 +49,9 @@ export async function processBadgeImage(
   }
 
   const fullText = ocr.text;
+
+  // Extract event name before filtering branding lines.
+  const eventName = extractEventName(ocr.lines);
 
   // Clean OCR artifacts, then filter garbage and event branding.
   const cleanLines = ocr.lines
@@ -134,5 +139,5 @@ export async function processBadgeImage(
     contact.email = emails[0];
   }
 
-  return { contact, rawText: fullText, confidence: ocr.confidence };
+  return { contact, rawText: fullText, confidence: ocr.confidence, eventName };
 }

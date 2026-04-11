@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <clipPath id="bg-clip">
+      <rect width="512" height="512" rx="80" ry="80"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#bg-clip)">
+    <!-- Background -->
+    <rect width="512" height="512" fill="#000"/>
+
+    <!-- Chest bib -->
+    <path d="M 192,370 L 256,468 L 320,370 Q 292,438 256,455 Q 220,438 192,370 Z" fill="#FFF"/>
+
+    <!-- Ears - solid white -->
+    <circle cx="148" cy="115" r="62" fill="#FFF"/>
+    <circle cx="364" cy="115" r="62" fill="#FFF"/>
+    <!-- Subtle inner ear line -->
+    <circle cx="148" cy="112" r="36" fill="none" stroke="#000" stroke-width="2" opacity="0.15"/>
+    <circle cx="364" cy="112" r="36" fill="none" stroke="#000" stroke-width="2" opacity="0.15"/>
+
+    <!-- Head -->
+    <path d="
+      M 256,408
+      C 222,404 192,376 176,340
+      C 154,294 142,246 140,202
+      C 138,170 146,142 168,122
+      C 192,100 222,90 256,88
+      C 290,90 320,100 344,122
+      C 366,142 374,170 372,202
+      C 370,246 358,294 336,340
+      C 320,376 290,404 256,408
+      Z
+    " fill="#FFF"/>
+
+    <!-- Muzzle area (subtle) -->
+    <ellipse cx="256" cy="332" rx="44" ry="36" fill="#FFF"/>
+
+    <!-- Eyes -->
+    <circle cx="210" cy="230" r="24" fill="#000"/>
+    <circle cx="302" cy="230" r="24" fill="#000"/>
+    <!-- Eye shine -->
+    <circle cx="203" cy="222" r="7" fill="#FFF" opacity="0.4"/>
+    <circle cx="295" cy="222" r="7" fill="#FFF" opacity="0.4"/>
+
+    <!-- Nose -->
+    <path d="M 248,296 L 256,310 L 264,296 Q 256,292 248,296 Z" fill="#000"/>
+
+    <!-- Smile -->
+    <path d="M 244,330 Q 256,340 268,330" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  </g>
+</svg>

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useCallback, useRef, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { processQRData } from '@/scanner/QRProcessor';
 import { processCardImage } from '@/scanner/CardOCRProcessor';
 import { processBadgeImage } from '@/scanner/BadgeOCRFallback';
@@ -11,9 +11,12 @@ import ScanModeToggle from '@/components/ScanModeToggle';
 
 type ScanStatus = 'idle' | 'processing' | 'needs-ocr' | 'badge-photo';
 
-export default function ScannerPage() {
+function ScannerPageContent() {
   const router = useRouter();
-  const [mode, setMode] = useState<'badge' | 'card'>('badge');
+  const searchParams = useSearchParams();
+  const initialMode = searchParams.get('mode') === 'card' ? 'card' : 'badge';
+
+  const [mode, setMode] = useState<'badge' | 'card'>(initialMode);
   const [banner, setBanner] = useState<string | null>(null);
   const [scanStatus, setScanStatus] = useState<ScanStatus>('idle');
   const [ocrConfidence, setOcrConfidence] = useState<number | null>(null);
@@ -79,6 +82,7 @@ export default function ScannerPage() {
             contact: result.contact,
             rawOCRText: result.rawText,
             ocrConfidence: result.confidence,
+            eventName: result.eventName,
             source: 'badge_qr',
           }),
         );
@@ -107,6 +111,7 @@ export default function ScannerPage() {
             contact: result.contact,
             rawOCRText: result.rawText,
             ocrConfidence: result.confidence,
+            eventName: result.eventName,
             source: 'business_card',
           }),
         );
@@ -205,5 +210,13 @@ export default function ScannerPage() {
           : 'Align the business card inside the frame and tap Capture.'}
       </p>
     </div>
+  );
+}
+
+export default function ScannerPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen text-white">Loading...</div>}>
+      <ScannerPageContent />
+    </Suspense>
   );
 }

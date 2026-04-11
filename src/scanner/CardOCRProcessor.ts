@@ -4,7 +4,7 @@
  */
 
 import type { ParsedContact } from './VCardParser';
-import { recognizeImage } from './OCREngine';
+import { recognizeWithAutoRotate } from './OCREngine';
 import {
   extractEmails,
   extractPhones,
@@ -15,6 +15,7 @@ import {
   isEventBranding,
   isLikelyName,
   cleanOCRLine,
+  extractEventName,
 } from './ContactExtractor';
 
 
@@ -22,6 +23,7 @@ export interface CardOCRResult {
   contact: ParsedContact;
   rawText: string;
   confidence: number;
+  eventName?: string;
 }
 
 /**
@@ -40,7 +42,7 @@ export interface CardOCRResult {
 export async function processCardImage(
   imageBlob: Blob,
 ): Promise<CardOCRResult> {
-  const ocr = await recognizeImage(imageBlob);
+  const ocr = await recognizeWithAutoRotate(imageBlob);
 
   const contact: ParsedContact = {};
 
@@ -49,6 +51,9 @@ export async function processCardImage(
   }
 
   const fullText = ocr.text;
+
+  // ── Extract event name before filtering branding lines ───────
+  const eventName = extractEventName(ocr.lines);
 
   // ── Clean, filter garbage and branding lines ─────────────────
   const cleanLines = ocr.lines
@@ -158,7 +163,7 @@ export async function processCardImage(
     }
   }
 
-  return { contact, rawText: fullText, confidence: ocr.confidence };
+  return { contact, rawText: fullText, confidence: ocr.confidence, eventName };
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
