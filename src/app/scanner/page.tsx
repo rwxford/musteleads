@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { processQRData } from '@/scanner/QRProcessor';
 import { processCardImage } from '@/scanner/CardOCRProcessor';
 import { processBadgeImage } from '@/scanner/BadgeOCRFallback';
+import { traceStart, traceRawImage, traceEnd } from '@/scanner/DebugTrace';
 import CameraView from '@/components/CameraView';
 import CardCaptureView from '@/components/CardCaptureView';
 import ScanModeToggle from '@/components/ScanModeToggle';
@@ -72,8 +73,17 @@ function ScannerPageContent() {
       setScanStatus('processing');
       setBanner(null);
 
+      // Debug: start trace and capture raw image.
+      traceStart('badge_photo');
+      try {
+        const reader = new FileReader();
+        reader.onloadend = () => traceRawImage(reader.result as string);
+        reader.readAsDataURL(imageBlob);
+      } catch { /* non-critical */ }
+
       const result = await processBadgeImage(imageBlob);
       setOcrConfidence(result.confidence);
+      traceEnd();
 
       try {
         sessionStorage.setItem(
@@ -101,8 +111,17 @@ function ScannerPageContent() {
       setScanStatus('processing');
       setBanner(null);
 
+      // Debug: start trace and capture raw image.
+      traceStart('business_card');
+      try {
+        const reader = new FileReader();
+        reader.onloadend = () => traceRawImage(reader.result as string);
+        reader.readAsDataURL(imageBlob);
+      } catch { /* non-critical */ }
+
       const result = await processCardImage(imageBlob);
       setOcrConfidence(result.confidence);
+      traceEnd();
 
       try {
         sessionStorage.setItem(

@@ -6,6 +6,13 @@
 import type { ParsedContact } from './VCardParser';
 import { recognizeImage } from './OCREngine';
 import {
+  isDebugEnabled,
+  traceStep,
+  traceCleanedLines,
+  traceClassification,
+  traceFinalResult,
+} from './DebugTrace';
+import {
   extractEmails,
   extractPhones,
   extractUrls,
@@ -56,9 +63,14 @@ export async function processCardImage(
   const eventName = extractEventName(ocr.lines);
 
   // ── Clean, filter garbage and branding lines ─────────────────
+  const debug = isDebugEnabled();
+  if (debug) traceStep('event_name_detected', { eventName: eventName || '(none)' });
+
   const cleanLines = ocr.lines
     .map(cleanOCRLine)
     .filter((line) => line.length > 0 && !isGarbageLine(line) && !isEventBranding(line));
+
+  if (debug) traceCleanedLines(cleanLines);
 
   // ── High-confidence regex fields ──────────────────────────────
   const emails = extractEmails(fullText);
@@ -86,6 +98,7 @@ export async function processCardImage(
 
     // Skip lines that are just an email, phone, or URL.
     if (lineIsEmailOrPhoneOrUrl(line)) {
+      if (debug) traceClassification(line, 'email/phone/url', 'consumed');
       consumed.add(i);
       continue;
     }
@@ -95,6 +108,7 @@ export async function processCardImage(
     if (!contact.company) {
       if (isLikelyCompany(line)) {
         contact.company = line;
+        if (debug) traceClassification(line, 'company_keyword', 'company');
         consumed.add(i);
         continue;
       }
@@ -107,6 +121,7 @@ export async function processCardImage(
         !isLikelyJobTitle(line)
       ) {
         contact.company = line.trim();
+        if (debug) traceClassification(line, 'all_caps_company', 'company');
         consumed.add(i);
         continue;
       }
@@ -115,6 +130,7 @@ export async function processCardImage(
     // Title detection.
     if (!contact.title && isLikelyJobTitle(line)) {
       contact.title = line;
+      if (debug) traceClassification(line, 'job_title', 'title');
       consumed.add(i);
       continue;
     }
@@ -161,6 +177,20 @@ export async function processCardImage(
         break;
       }
     }
+  }
+
+  if (debug) {
+    traceFinalResult({
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      company: contact.company,
+      title: contact.title,
+      email: contact.email,
+      phone: contact.phone,
+      eventName,
+      nameCandidateCount: nameCandidates.length,
+      mergedNameCount: mergedNames.length,
+    });
   }
 
   return { contact, rawText: fullText, confidence: ocr.confidence, eventName };

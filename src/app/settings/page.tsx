@@ -4,6 +4,12 @@ import { useState, useEffect } from 'react';
 import { getExportHistory, type ExportRecord } from '@/export/ExportHistory';
 import { db } from '@/leads/LeadDB';
 import { useLeadStore } from '@/leads/LeadStore';
+import {
+  isDebugEnabled,
+  setDebugEnabled,
+  getTraceHistory,
+  clearTraceHistory,
+} from '@/scanner/DebugTrace';
 
 export default function SettingsPage() {
   const { loadLeads } = useLeadStore();
@@ -141,6 +147,48 @@ export default function SettingsPage() {
           </button>
         </section>
       )}
+
+      {/* Debug Mode */}
+      <section className="mt-10">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-yellow-400/60">
+          Developer
+        </h2>
+        <div className="flex items-center justify-between rounded-xl bg-white/5 px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-white">Debug Mode</p>
+            <p className="text-xs text-white/40">
+              Show OCR trace overlay with raw images, Tesseract output, and line classification
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              const next = !isDebugEnabled();
+              setDebugEnabled(next);
+              window.location.reload();
+            }}
+            className={`px-3 py-1 rounded-lg text-xs font-bold ${
+              isDebugEnabled()
+                ? 'bg-yellow-500 text-black'
+                : 'bg-gray-700 text-white'
+            }`}
+          >
+            {isDebugEnabled() ? 'ON' : 'OFF'}
+          </button>
+        </div>
+        {isDebugEnabled() && (
+          <div className="mt-2 space-y-2">
+            <p className="text-xs text-white/40">
+              {getTraceHistory().length} traces in history
+            </p>
+            <button
+              onClick={() => { clearTraceHistory(); window.location.reload(); }}
+              className="text-xs text-yellow-400 underline"
+            >
+              Clear trace history
+            </button>
+          </div>
+        )}
+      </section>
 
       {/* Danger zone */}
       <section className="mt-10">

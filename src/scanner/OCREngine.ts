@@ -5,6 +5,12 @@
  */
 
 import type { Worker } from 'tesseract.js';
+import {
+  isDebugEnabled,
+  traceStep,
+  tracePreprocessedImage,
+  traceOCRResult,
+} from './DebugTrace';
 
 export interface OCRResult {
   text: string;
@@ -17,30 +23,23 @@ const EMPTY_RESULT: OCRResult = { text: '', confidence: 0, lines: [] };
 let workerInstance: Worker | null = null;
 let workerInitPromise: Promise<Worker> | null = null;
 
-/**
- * Return the cached worker, creating it on the first call.
- * Uses a dynamic import to avoid pulling WASM into the SSR bundle.
- *
- * No PSM override — let Tesseract auto-detect page segmentation.
- * No manual rotation — let Tesseract handle it with rotateAuto.
- */
 async function getWorker(): Promise<Worker> {
   if (workerInstance) {
     return workerInstance;
   }
 
-  // Prevent multiple concurrent initializations.
   if (workerInitPromise) {
     return workerInitPromise;
   }
 
   workerInitPromise = (async () => {
+    const debug = isDebugEnabled();
+    if (debug) traceStep('tesseract_init_start', 'Loading Tesseract.js worker');
+
     const { createWorker } = await import('tesseract.js');
     const worker = await createWorker('eng');
 
-    // Let Tesseract auto-detect page segmentation mode (default).
-    // Do NOT set PSM — the default auto mode handles varied layouts
-    // better than forcing SINGLE_BLOCK on badge/card images.
+    if (debug) traceStep('tesseract_init_done', 'Worker ready');
 
     workerInstance = worker;
     return worker;
@@ -49,15 +48,11 @@ async function getWorker(): Promise<Worker> {
   try {
     return await workerInitPromise;
   } catch (err) {
-    // Reset so the next call can retry.
     workerInitPromise = null;
     throw err;
   }
 }
 
-/**
- * Convert a Blob to a data-URL string that Tesseract can consume.
- */
 function blobToDataURL(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -67,26 +62,21 @@ function blobToDataURL(blob: Blob): Promise<string> {
   });
 }
 
-/** Minimum width (px) for good OCR accuracy. */
 const MIN_OCR_WIDTH = 1500;
 
 /**
- * Gentle image pre-processing for OCR: grayscale + mild contrast.
- *
- * NO binarization — threshold binarization destroys text on badges
- * with varying lighting, plastic holders, and gray-on-white text.
- *
- * NO manual rotation — Tesseract's built-in rotateAuto handles it.
+ * Gentle image pre-processing: grayscale + mild contrast + upscale.
+ * NO binarization. NO manual rotation.
  */
 export async function preprocessImage(
   imageSource: Blob | string,
 ): Promise<string> {
+  const debug = isDebugEnabled();
   const dataUrl =
     imageSource instanceof Blob
       ? await blobToDataURL(imageSource)
       : imageSource;
 
-  // Load image into an offscreen element.
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const el = new Image();
     el.onload = () => resolve(el);
@@ -95,9 +85,16 @@ export async function preprocessImage(
     el.src = dataUrl;
   });
 
-  // Determine output dimensions — upscale small images.
   let width = img.naturalWidth;
   let height = img.naturalHeight;
+
+  if (debug) {
+    traceStep('preprocess_input', {
+      originalWidth: img.naturalWidth,
+      originalHeight: img.naturalHeight,
+    });
+  }
+
   if (width < MIN_OCR_WIDTH) {
     const scale = MIN_OCR_WIDTH / width;
     width = MIN_OCR_WIDTH;
@@ -108,31 +105,22 @@ export async function preprocessImage(
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    return dataUrl;
-  }
+  if (!ctx) return dataUrl;
 
-  // Draw original image (possibly upscaled).
   ctx.drawImage(img, 0, 0, width, height);
 
-  // Get pixel data and apply gentle processing.
   const imageData = ctx.getImageData(0, 0, width, height);
   const { data } = imageData;
 
-  // Contrast factor: 1.2 (gentle). Previous 1.5 was too aggressive.
   const contrastFactor = 1.2;
 
   for (let i = 0; i < data.length; i += 4) {
-    // Grayscale (luminosity method).
     const gray =
       data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-
-    // Mild contrast boost only. NO binarization.
     const adjusted = Math.min(
       255,
       Math.max(0, (gray - 128) * contrastFactor + 128),
     );
-
     data[i] = adjusted;
     data[i + 1] = adjusted;
     data[i + 2] = adjusted;
@@ -140,27 +128,37 @@ export async function preprocessImage(
 
   ctx.putImageData(imageData, 0, 0);
 
-  return canvas.toDataURL('image/png');
+  const result = canvas.toDataURL('image/png');
+
+  if (debug) {
+    traceStep('preprocess_output', {
+      outputWidth: width,
+      outputHeight: height,
+      contrastFactor,
+    });
+    tracePreprocessedImage(result);
+  }
+
+  return result;
 }
 
 /**
- * Run OCR on an image source (Blob or data-URL / object-URL string).
- * Returns structured text, confidence, and individual lines.
- * Never throws — returns an empty result on failure.
- *
- * Uses Tesseract's built-in auto-rotation instead of manual rotation
- * attempts which produced worse results.
+ * Run OCR on an image source. Uses Tesseract's built-in
+ * auto-rotation. Never throws — returns empty result on failure.
  */
 export async function recognizeImage(
   imageSource: Blob | string,
 ): Promise<OCRResult> {
+  const debug = isDebugEnabled();
+
   try {
     const worker = await getWorker();
 
-    // Gentle pre-processing: grayscale + mild contrast + upscale.
+    if (debug) traceStep('ocr_start', 'Running Tesseract.recognize()');
+    const t0 = Date.now();
+
     const processed = await preprocessImage(imageSource);
 
-    // Let Tesseract handle rotation detection internally.
     const { data } = await worker.recognize(processed, {
       rotateAuto: true,
     });
@@ -171,21 +169,29 @@ export async function recognizeImage(
       .map((l: string) => l.trim())
       .filter(Boolean);
 
-    return {
+    const result = {
       text,
       confidence: data.confidence ?? 0,
       lines,
     };
+
+    if (debug) {
+      traceStep('ocr_complete', {
+        durationMs: Date.now() - t0,
+        confidence: result.confidence,
+        lineCount: lines.length,
+      });
+      traceOCRResult(text, result.confidence, lines);
+    }
+
+    return result;
   } catch (err) {
     console.error('[OCREngine] Recognition failed:', err);
+    if (debug) traceStep('ocr_error', String(err));
     return EMPTY_RESULT;
   }
 }
 
-/**
- * Terminate the cached worker and release resources. Safe to call
- * even if the worker was never created.
- */
 export async function terminateOCR(): Promise<void> {
   if (workerInstance) {
     try {

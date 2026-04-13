@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import BottomNav from '@/components/BottomNav';
+import DebugOverlay from '@/components/DebugOverlay';
 
 export const metadata: Metadata = {
   title: 'Musteleads',
@@ -38,6 +39,7 @@ export default function RootLayout({
         {/* Main content with bottom padding for the nav bar. */}
         <main className="pb-20">{children}</main>
         <BottomNav />
+        <DebugOverlay />
       </body>
     </html>
   );
