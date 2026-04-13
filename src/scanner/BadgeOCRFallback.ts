@@ -5,7 +5,7 @@
  */
 
 import type { ParsedContact } from './VCardParser';
-import { recognizeWithAutoRotate } from './OCREngine';
+import { recognizeImage } from './OCREngine';
 import {
   isLikelyCompany,
   extractEmails,
@@ -40,7 +40,7 @@ export interface BadgeOCRResult {
 export async function processBadgeImage(
   imageBlob: Blob,
 ): Promise<BadgeOCRResult> {
-  const ocr = await recognizeWithAutoRotate(imageBlob);
+  const ocr = await recognizeImage(imageBlob);
 
   const contact: ParsedContact = {};
 

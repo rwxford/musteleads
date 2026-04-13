@@ -4,7 +4,7 @@
  */
 
 import type { ParsedContact } from './VCardParser';
-import { recognizeWithAutoRotate } from './OCREngine';
+import { recognizeImage } from './OCREngine';
 import {
   extractEmails,
   extractPhones,
@@ -42,7 +42,7 @@ export interface CardOCRResult {
 export async function processCardImage(
   imageBlob: Blob,
 ): Promise<CardOCRResult> {
-  const ocr = await recognizeWithAutoRotate(imageBlob);
+  const ocr = await recognizeImage(imageBlob);
 
   const contact: ParsedContact = {};
 
