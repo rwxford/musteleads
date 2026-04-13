@@ -79,6 +79,7 @@ export async function processBadgeImage(
     if (
       words.length >= 1 &&
       words.length <= 3 &&
+      line.trim().length >= 3 &&
       line === line.toUpperCase() &&
       /^[A-Z\s]+$/.test(line.trim()) &&
       !isLikelyJobTitle(line)

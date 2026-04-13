@@ -166,17 +166,34 @@ export function isLikelyCompany(text: string): boolean {
 // ── New helper functions ──────────────────────────────────────────
 
 /**
- * Strip common OCR punctuation artifacts from line edges.
+ * Strip common OCR artifacts from line edges.
  * Tesseract often misreads badge holder edges, plastic frames,
- * and decorative elements as punctuation like }, |, ~, ], etc.
+ * and decorative elements as punctuation or short noise prefixes.
+ *
+ * Examples from real scans:
+ *   "I Ross" → "Ross"  (single-char alpha prefix)
+ *   "Il Weatherford" → "Weatherford"  (two-char noise prefix)
+ *   "Bl CODER i" → "CODER"  (noise prefix AND suffix)
+ *   "| Director, US Public Sect 4" → "Director, US Public Sect 4"
  */
 export function cleanOCRLine(text: string): string {
-  // Strip leading/trailing non-alphanumeric characters except
-  // those that legitimately appear in contact data (+, @, ., -).
-  return text
+  let cleaned = text
+    // Strip leading non-alphanumeric characters.
     .replace(/^[^a-zA-Z0-9+@]+/, '')
+    // Strip trailing non-alphanumeric (except period for abbreviations).
     .replace(/[^a-zA-Z0-9.)+@]+$/, '')
     .trim();
+
+  // Strip short noise prefixes: 1-2 characters followed by a space
+  // before the real content. Common OCR artifact on badges where
+  // the plastic holder edge is read as "I ", "Il ", "Bl ", etc.
+  cleaned = cleaned.replace(/^[A-Za-z]{1,2}\s+(?=[A-Z])/, '');
+
+  // Strip short noise suffixes: a space followed by 1-2 characters
+  // at the end. E.g., "CODER i" → "CODER", "Sect 4" stays (digit).
+  cleaned = cleaned.replace(/\s+[a-z]{1,2}$/, '');
+
+  return cleaned.trim();
 }
 
 /**
