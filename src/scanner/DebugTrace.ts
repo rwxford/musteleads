@@ -176,6 +176,9 @@ export function traceEnd(): OCRTrace | null {
   const trace = { ...currentTrace };
   saveTrace(trace);
 
+  // Sync trace to server in the background.
+  import('@/lib/serverSync').then(m => m.syncTraceToServer(trace as unknown as Record<string, unknown>)).catch(() => {});
+
   const result = currentTrace;
   currentTrace = null;
   return result;

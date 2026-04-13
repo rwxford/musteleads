@@ -85,6 +85,9 @@ function ScannerPageContent() {
       setOcrConfidence(result.confidence);
       traceEnd();
 
+      // Log scan completion to server.
+      import('@/lib/serverSync').then(m => m.serverLog('info', 'Badge OCR scan completed', { mode: 'badge_photo', confidence: result.confidence })).catch(() => {});
+
       try {
         sessionStorage.setItem(
           'musteleads:scan-result',
@@ -122,6 +125,9 @@ function ScannerPageContent() {
       const result = await processCardImage(imageBlob);
       setOcrConfidence(result.confidence);
       traceEnd();
+
+      // Log scan completion to server.
+      import('@/lib/serverSync').then(m => m.serverLog('info', 'Card OCR scan completed', { mode: 'business_card', confidence: result.confidence })).catch(() => {});
 
       try {
         sessionStorage.setItem(

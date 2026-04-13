@@ -47,6 +47,10 @@ export const useLeadStore = create<LeadState>((set, get) => ({
     };
     await db.leads.add(lead);
     set((state) => ({ leads: [...state.leads, lead] }));
+
+    // Sync to server in the background — fire and forget.
+    import('@/lib/serverSync').then(m => m.syncLeadToServer(lead as unknown as Record<string, unknown>)).catch(() => {});
+
     return lead;
   },
 
@@ -56,6 +60,12 @@ export const useLeadStore = create<LeadState>((set, get) => ({
     set((state) => ({
       leads: state.leads.map((l) => (l.id === id ? { ...l, ...updatedFields } : l)),
     }));
+
+    // Sync update to server in the background.
+    const merged = get().leads.find(l => l.id === id);
+    if (merged) {
+      import('@/lib/serverSync').then(m => m.syncLeadToServer(merged as unknown as Record<string, unknown>)).catch(() => {});
+    }
   },
 
   deleteLead: async (id: string) => {

@@ -9,7 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@vercel/postgres": "^0.10.0",
     "dexie": "^4.4.2",
+    "drizzle-orm": "^0.45.2",
     "html5-qrcode": "^2.3.8",
     "next": "16.2.3",
     "next-pwa": "^5.6.0",
@@ -27,6 +29,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/uuid": "^10.0.0",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
     "tailwindcss": "^4",
