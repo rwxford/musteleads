@@ -69,14 +69,15 @@ export async function processBadgeImage(
 
   if (debug) traceCleanedLines(cleanLines);
 
-  // Badges have large, sparse text — focus on the first few
-  // lines which almost always contain name and company.
-  const topLines = cleanLines.slice(0, 6);
+  // Use all cleaned lines — real contact data can appear far
+  // down when Tesseract reads surrounding graphics, sponsors,
+  // and badge-holder noise before reaching the attendee text.
+  const candidateLines = cleanLines;
 
   // Try to detect company first so we can exclude it from the
   // name candidate pool. Check explicit keywords first, then
   // fall back to short ALL-CAPS lines.
-  for (const line of topLines) {
+  for (const line of candidateLines) {
     if (contact.company) break;
 
     if (isLikelyCompany(line)) {
@@ -105,7 +106,7 @@ export async function processBadgeImage(
   }
 
   // Detect job title.
-  for (const line of topLines) {
+  for (const line of candidateLines) {
     if (line === contact.company) continue;
     if (isLikelyJobTitle(line)) {
       contact.title = line;
@@ -118,7 +119,7 @@ export async function processBadgeImage(
   // two lines ("Ross" then "Weatherford"). Collect consecutive
   // name-like lines and merge them.
   const nameLines: string[] = [];
-  for (const line of topLines) {
+  for (const line of candidateLines) {
     if (line === contact.company) continue;
     if (line === contact.title) continue;
     if (isLikelyName(line)) {
@@ -127,6 +128,25 @@ export async function processBadgeImage(
       // Stop collecting once we hit a non-name line after finding
       // at least one name line (names are grouped together).
       break;
+    }
+  }
+
+  // Word-level fallback: if no name was found via full-line
+  // matching, try extracting the first word from multi-word lines.
+  // Handles OCR noise suffixes like "Ross SNE" where "Ross" alone
+  // is a valid name but the full line fails isLikelyName because
+  // the appended garbage looks wrong.
+  if (nameLines.length === 0) {
+    for (const line of candidateLines) {
+      if (line === contact.company || line === contact.title) continue;
+      const words = line.split(/\s+/);
+      if (words.length >= 2) {
+        const firstWord = words[0];
+        if (isLikelyName(firstWord)) {
+          nameLines.push(firstWord);
+          if (debug) traceClassification(line, 'word_level_name', 'name');
+        }
+      }
     }
   }
 
@@ -139,7 +159,7 @@ export async function processBadgeImage(
     contact.fullName = merged;
   } else {
     // Fallback: first non-company, non-title line.
-    for (const line of topLines) {
+    for (const line of candidateLines) {
       if (line === contact.company) continue;
       if (line === contact.title) continue;
       const words = line.split(/\s+/).filter(Boolean);

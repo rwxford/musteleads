@@ -69,13 +69,21 @@ export default function CameraView({ onScanSuccess, onScanError, isActive }: Cam
       }
 
       try {
-        const { Html5Qrcode } = await import('html5-qrcode');
+        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
         if (cancelled) return;
 
         // Reuse or create an instance. The element id must match the
         // rendered container div.
         if (!scannerRef.current) {
-          scannerRef.current = new Html5Qrcode(readerId);
+          scannerRef.current = new Html5Qrcode(readerId, {
+            formatsToSupport: [
+              Html5QrcodeSupportedFormats.QR_CODE,
+              Html5QrcodeSupportedFormats.DATA_MATRIX,
+              Html5QrcodeSupportedFormats.AZTEC,
+              Html5QrcodeSupportedFormats.PDF_417,
+            ],
+            verbose: false,
+          });
         }
 
         const scanner = scannerRef.current;
@@ -84,8 +92,11 @@ export default function CameraView({ onScanSuccess, onScanError, isActive }: Cam
           { facingMode: 'environment' },
           {
             fps: 10,
-            qrbox: { width: 250, height: 250 },
-            aspectRatio: 1.0,
+            qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+              const minDimension = Math.min(viewfinderWidth, viewfinderHeight);
+              const size = Math.floor(minDimension * 0.7);
+              return { width: size, height: size };
+            },
           },
           (decodedText) => {
             // Trigger visual flash feedback.
