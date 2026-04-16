@@ -104,7 +104,9 @@ export async function processCardImage(
     }
 
     // Company detection — explicit keywords or short ALL-CAPS
-    // line (1-3 words, all caps, not a title keyword).
+    // line (1-3 words, all caps, not a title keyword). Skip 2-word
+    // ALL-CAPS lines that look like a person's name — badges
+    // almost always print names in uppercase.
     if (!contact.company) {
       if (isLikelyCompany(line)) {
         contact.company = line;
@@ -119,7 +121,8 @@ export async function processCardImage(
         line.trim().length >= 3 &&
         line === line.toUpperCase() &&
         /^[A-Z\s]+$/.test(line.trim()) &&
-        !isLikelyJobTitle(line)
+        !isLikelyJobTitle(line) &&
+        !looksLikeAllCapsName(words)
       ) {
         contact.company = line.trim();
         if (debug) traceClassification(line, 'all_caps_company', 'company');
@@ -253,4 +256,15 @@ function mergeConsecutiveNameLines(
 
   // Merge each group into a single string.
   return groups.map((g) => g.join(' '));
+}
+
+/**
+ * Returns true if ALL-CAPS words look like a person's name rather
+ * than a company. Two words of 2+ alpha chars each (e.g. "GREG
+ * BONN", "ROSS WEATHERFORD") are common on badges where names are
+ * printed in uppercase.
+ */
+function looksLikeAllCapsName(words: string[]): boolean {
+  if (words.length !== 2) return false;
+  return words.every((w) => /^[A-Z]{2,}$/.test(w));
 }

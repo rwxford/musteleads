@@ -7,6 +7,13 @@
 import type { ParsedContact } from './VCardParser';
 import { recognizeImage } from './OCREngine';
 import {
+  isDebugEnabled,
+  traceStep,
+  traceCleanedLines,
+  traceClassification,
+  traceFinalResult,
+} from './DebugTrace';
+import {
   isLikelyCompany,
   extractEmails,
   isGarbageLine,
@@ -41,6 +48,7 @@ export async function processBadgeImage(
   imageBlob: Blob,
 ): Promise<BadgeOCRResult> {
   const ocr = await recognizeImage(imageBlob);
+  const debug = isDebugEnabled();
 
   const contact: ParsedContact = {};
 
@@ -52,11 +60,14 @@ export async function processBadgeImage(
 
   // Extract event name before filtering branding lines.
   const eventName = extractEventName(ocr.lines);
+  if (debug) traceStep('event_name_detected', { eventName: eventName || '(none)' });
 
   // Clean OCR artifacts, then filter garbage and event branding.
   const cleanLines = ocr.lines
     .map(cleanOCRLine)
     .filter((line) => line.length > 0 && !isGarbageLine(line) && !isEventBranding(line));
+
+  if (debug) traceCleanedLines(cleanLines);
 
   // Badges have large, sparse text — focus on the first few
   // lines which almost always contain name and company.
@@ -70,11 +81,14 @@ export async function processBadgeImage(
 
     if (isLikelyCompany(line)) {
       contact.company = line;
+      if (debug) traceClassification(line, 'company_keyword', 'company');
       continue;
     }
 
     // Short ALL-CAPS line (1-3 words) that isn't a title keyword
-    // is likely a company name (e.g. "CODER").
+    // is likely a company name (e.g. "CODER"). But skip 2-word
+    // ALL-CAPS lines that look like a person's name — badges
+    // almost always print names in uppercase.
     const words = line.trim().split(/\s+/);
     if (
       words.length >= 1 &&
@@ -82,9 +96,11 @@ export async function processBadgeImage(
       line.trim().length >= 3 &&
       line === line.toUpperCase() &&
       /^[A-Z\s]+$/.test(line.trim()) &&
-      !isLikelyJobTitle(line)
+      !isLikelyJobTitle(line) &&
+      !looksLikeAllCapsName(words)
     ) {
       contact.company = line.trim();
+      if (debug) traceClassification(line, 'all_caps_company', 'company');
     }
   }
 
@@ -93,6 +109,7 @@ export async function processBadgeImage(
     if (line === contact.company) continue;
     if (isLikelyJobTitle(line)) {
       contact.title = line;
+      if (debug) traceClassification(line, 'job_title', 'title');
       break;
     }
   }
@@ -140,5 +157,27 @@ export async function processBadgeImage(
     contact.email = emails[0];
   }
 
+  if (debug) {
+    traceFinalResult({
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      company: contact.company,
+      title: contact.title,
+      email: contact.email,
+      eventName,
+    });
+  }
+
   return { contact, rawText: fullText, confidence: ocr.confidence, eventName };
+}
+
+/**
+ * Returns true if ALL-CAPS words look like a person's name rather
+ * than a company. Two words of 2+ alpha chars each (e.g. "GREG
+ * BONN", "ROSS WEATHERFORD") are common on badges where names are
+ * printed in uppercase.
+ */
+function looksLikeAllCapsName(words: string[]): boolean {
+  if (words.length !== 2) return false;
+  return words.every((w) => /^[A-Z]{2,}$/.test(w));
 }
