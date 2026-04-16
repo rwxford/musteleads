@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/db';
+import { db, hasDatabase, getPostgresUrl } from '@/db';
 import { leads } from '@/db/schema';
 import { sql } from 'drizzle-orm';
 
@@ -7,9 +7,9 @@ import { sql } from 'drizzle-orm';
 export async function GET() {
   const timestamp = new Date().toISOString();
 
-  if (!process.env.POSTGRES_URL) {
+  if (!hasDatabase()) {
     return NextResponse.json(
-      { status: 'degraded', db: false, timestamp, error: 'POSTGRES_URL not set' },
+      { status: 'degraded', db: false, timestamp, error: 'No POSTGRES_URL, DATABASE_URL, or compatible env var found' },
       { status: 503 },
     );
   }

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
+import { db, hasDatabase } from '@/db';
 import { leads } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 
 function noDB() {
   return NextResponse.json(
-    { error: 'Database not configured. Set POSTGRES_URL environment variable.' },
+    { error: 'Database not configured. Set POSTGRES_URL or DATABASE_URL environment variable.' },
     { status: 503 },
   );
 }
@@ -15,7 +15,7 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!process.env.POSTGRES_URL) return noDB();
+  if (!hasDatabase()) return noDB();
 
   try {
     const { id } = await params;
@@ -35,7 +35,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!process.env.POSTGRES_URL) return noDB();
+  if (!hasDatabase()) return noDB();
 
   try {
     const { id } = await params;
@@ -74,7 +74,7 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!process.env.POSTGRES_URL) return noDB();
+  if (!hasDatabase()) return noDB();
 
   try {
     const { id } = await params;

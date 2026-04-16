@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
+import { db, hasDatabase } from '@/db';
 import { traces } from '@/db/schema';
 import { desc } from 'drizzle-orm';
 
 function noDB() {
   return NextResponse.json(
-    { error: 'Database not configured. Set POSTGRES_URL environment variable.' },
+    { error: 'Database not configured. Set POSTGRES_URL or DATABASE_URL environment variable.' },
     { status: 503 },
   );
 }
 
 // GET /api/traces — list recent traces (last 50)
 export async function GET() {
-  if (!process.env.POSTGRES_URL) return noDB();
+  if (!hasDatabase()) return noDB();
 
   try {
     const rows = await db
@@ -33,7 +33,7 @@ export async function GET() {
 
 // POST /api/traces — save a trace from client
 export async function POST(request: NextRequest) {
-  if (!process.env.POSTGRES_URL) return noDB();
+  if (!hasDatabase()) return noDB();
 
   try {
     const body = await request.json();

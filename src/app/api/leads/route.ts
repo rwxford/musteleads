@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
+import { db, hasDatabase } from '@/db';
 import { leads } from '@/db/schema';
 import { desc, eq } from 'drizzle-orm';
 
 function noDB() {
   return NextResponse.json(
-    { error: 'Database not configured. Set POSTGRES_URL environment variable.' },
+    { error: 'Database not configured. Set POSTGRES_URL or DATABASE_URL environment variable.' },
     { status: 503 },
   );
 }
 
 // GET /api/leads — list all leads
 export async function GET(request: NextRequest) {
-  if (!process.env.POSTGRES_URL) return noDB();
+  if (!hasDatabase()) return noDB();
 
   try {
     const { searchParams } = request.nextUrl;
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/leads — create or upsert lead(s)
 export async function POST(request: NextRequest) {
-  if (!process.env.POSTGRES_URL) return noDB();
+  if (!hasDatabase()) return noDB();
 
   try {
     const body = await request.json();
