@@ -153,7 +153,24 @@ function extractFieldsFromBlocks(
       continue;
     }
 
-    // Second largest = company (if not already set).
+    // If we have a firstName but no lastName, and this block
+    // looks like a name (not a company/title), treat it as the
+    // last name. Badges commonly split first/last across lines
+    // which Cloud Vision returns as separate blocks.
+    if (contact.firstName && !contact.lastName) {
+      if (
+        isLikelyName(text) &&
+        !isLikelyCompany(text) &&
+        !isLikelyJobTitle(text)
+      ) {
+        contact.lastName = text.trim();
+        contact.fullName = `${contact.firstName} ${contact.lastName}`;
+        if (debug) traceClassification(text, 'spatial_lastname', 'name');
+        continue;
+      }
+    }
+
+    // Next unclassified block = company (if not already set).
     if (!contact.company) {
       if (isLikelyJobTitle(text)) {
         if (!contact.title) {
