@@ -10,7 +10,6 @@
 import type { ParsedContact } from './VCardParser';
 import { performOCR } from './OCRRouter';
 import type { OCREngine } from './OCRRouter';
-import type { CloudVisionBlock } from './CloudVisionOCR';
 import {
   isDebugEnabled,
   traceStep,
@@ -43,16 +42,16 @@ export interface BadgeOCRResult {
  *
  * Strategy:
  * 1. OCR the badge image via OCR Router (Cloud Vision or Tesseract).
- * 2. If Cloud Vision, use spatial analysis (block heights) for
- *    field classification — largest text = name, second = company.
- * 3. If Tesseract, fall back to heuristic line classification.
- * 4. Extract email if visible anywhere on the badge.
+ * 2. Use heuristic line classification on the OCR text output.
+ *    Cloud Vision provides ~98% text accuracy; Tesseract ~30-50%.
+ *    Both produce line-based text that the heuristics handle.
+ * 3. Extract email if visible anywhere on the badge.
  */
 export async function processBadgeImage(
   imageBlob: Blob,
 ): Promise<BadgeOCRResult> {
   const routerResult = await performOCR(imageBlob, 'badge');
-  const { ocrResult, engine, cloudResponse } = routerResult;
+  const { ocrResult, engine } = routerResult;
   const debug = isDebugEnabled();
 
   const contact: ParsedContact = {};
@@ -67,19 +66,15 @@ export async function processBadgeImage(
   const eventName = extractEventName(ocrResult.lines);
   if (debug) traceStep('event_name_detected', { eventName: eventName || '(none)' });
 
-  // If we have Cloud Vision blocks with spatial data, use spatial
-  // analysis for better field classification.
-  if (engine === 'cloud-vision' && cloudResponse?.blocks && cloudResponse.blocks.length > 0) {
-    extractFieldsFromBlocks(cloudResponse.blocks, contact, debug);
+  if (debug) {
+    traceStep('ocr_engine_used', { engine, lineCount: ocrResult.lines.length });
   }
 
-  // If spatial analysis didn't find fields (or we're using
-  // Tesseract), fall back to heuristic line classification.
-  if (!contact.firstName && !contact.lastName) {
-    extractFieldsFromLines(ocrResult.lines, contact, debug);
-  }
+  // Use line-based heuristic extraction for all engines.
+  // Cloud Vision's value is text accuracy, not block structure.
+  extractFieldsFromLines(ocrResult.lines, contact, debug);
 
-  // Optionally pick up an email if visible anywhere on the badge.
+  // Pick up email if visible anywhere on the badge.
   if (!contact.email) {
     const emails = extractEmails(fullText);
     if (emails.length > 0) {
@@ -103,98 +98,8 @@ export async function processBadgeImage(
 }
 
 /**
- * Use Cloud Vision block heights for spatial field extraction.
- * Largest text block = name, second largest = company, etc.
- */
-function extractFieldsFromBlocks(
-  blocks: CloudVisionBlock[],
-  contact: ParsedContact,
-  debug: boolean,
-): void {
-  // Sort blocks by height (descending) — largest text first.
-  const sorted = [...blocks]
-    .filter((b) => b.text.trim().length > 0)
-    .sort((a, b) => b.height - a.height);
-
-  if (sorted.length === 0) return;
-
-  for (const block of sorted) {
-    const text = block.text.trim();
-    if (!text || isGarbageLine(text) || isEventBranding(text)) continue;
-
-    // Check for email/phone — skip those for name/company.
-    if (/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/.test(text)) {
-      if (!contact.email) contact.email = text.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/)?.[0];
-      continue;
-    }
-
-    // Largest unclassified block = name.
-    if (!contact.firstName && !contact.lastName) {
-      if (isLikelyJobTitle(text) && !isLikelyName(text)) {
-        if (!contact.title) {
-          contact.title = text;
-          if (debug) traceClassification(text, 'spatial_title', 'title');
-        }
-        continue;
-      }
-      if (isLikelyCompany(text)) {
-        if (!contact.company) {
-          contact.company = text;
-          if (debug) traceClassification(text, 'spatial_company', 'company');
-        }
-        continue;
-      }
-      // Assume it's the name.
-      const words = text.split(/\s+/).filter(Boolean);
-      contact.firstName = words[0] || '';
-      contact.lastName = words.slice(1).join(' ') || undefined;
-      contact.fullName = text;
-      if (debug) traceClassification(text, 'spatial_largest', 'name');
-      continue;
-    }
-
-    // If we have a firstName but no lastName, and this block
-    // looks like a name (not a company/title), treat it as the
-    // last name. Badges commonly split first/last across lines
-    // which Cloud Vision returns as separate blocks.
-    if (contact.firstName && !contact.lastName) {
-      if (
-        isLikelyName(text) &&
-        !isLikelyCompany(text) &&
-        !isLikelyJobTitle(text)
-      ) {
-        contact.lastName = text.trim();
-        contact.fullName = `${contact.firstName} ${contact.lastName}`;
-        if (debug) traceClassification(text, 'spatial_lastname', 'name');
-        continue;
-      }
-    }
-
-    // Next unclassified block = company (if not already set).
-    if (!contact.company) {
-      if (isLikelyJobTitle(text)) {
-        if (!contact.title) {
-          contact.title = text;
-          if (debug) traceClassification(text, 'spatial_title', 'title');
-        }
-      } else {
-        contact.company = text;
-        if (debug) traceClassification(text, 'spatial_second', 'company');
-      }
-      continue;
-    }
-
-    // Remaining: title.
-    if (!contact.title && isLikelyJobTitle(text)) {
-      contact.title = text;
-      if (debug) traceClassification(text, 'spatial_title', 'title');
-    }
-  }
-}
-
-/**
- * Heuristic line-based field extraction (used for Tesseract
- * output or when Cloud Vision spatial data is insufficient).
+ * Heuristic line-based field extraction on the OCR text output.
+ * Works with both Cloud Vision and Tesseract text.
  */
 function extractFieldsFromLines(
   rawLines: string[],
