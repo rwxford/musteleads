@@ -2,10 +2,15 @@
  * OCR fallback for badge faces when the QR code is opaque or
  * encrypted. Badges typically display large, sparse text: the
  * attendee name on top and the company name below.
+ *
+ * Uses the OCR Router to automatically select Cloud Vision API
+ * (online) or Tesseract.js (offline) for text recognition.
  */
 
 import type { ParsedContact } from './VCardParser';
-import { recognizeImage } from './OCREngine';
+import { performOCR } from './OCRRouter';
+import type { OCREngine } from './OCRRouter';
+import type { CloudVisionBlock } from './CloudVisionOCR';
 import {
   isDebugEnabled,
   traceStep,
@@ -29,6 +34,7 @@ export interface BadgeOCRResult {
   contact: ParsedContact;
   rawText: string;
   confidence: number;
+  engine: OCREngine;
   eventName?: string;
 }
 
@@ -36,47 +42,158 @@ export interface BadgeOCRResult {
  * OCR a badge-face photo and extract name + company.
  *
  * Strategy:
- * 1. OCR the badge image (pre-processing is handled by OCREngine).
- * 2. Filter garbage and event branding lines.
- * 3. From the remaining top lines, detect company (explicit
- *    keywords or short ALL-CAPS line).
- * 4. First non-company, non-title line that passes the name
- *    heuristic = attendee name.
- * 5. Optionally extract email if visible.
+ * 1. OCR the badge image via OCR Router (Cloud Vision or Tesseract).
+ * 2. If Cloud Vision, use spatial analysis (block heights) for
+ *    field classification — largest text = name, second = company.
+ * 3. If Tesseract, fall back to heuristic line classification.
+ * 4. Extract email if visible anywhere on the badge.
  */
 export async function processBadgeImage(
   imageBlob: Blob,
 ): Promise<BadgeOCRResult> {
-  const ocr = await recognizeImage(imageBlob);
+  const routerResult = await performOCR(imageBlob, 'badge');
+  const { ocrResult, engine, cloudResponse } = routerResult;
   const debug = isDebugEnabled();
 
   const contact: ParsedContact = {};
 
-  if (!ocr.text) {
-    return { contact, rawText: '', confidence: ocr.confidence };
+  if (!ocrResult.text) {
+    return { contact, rawText: '', confidence: ocrResult.confidence, engine };
   }
 
-  const fullText = ocr.text;
+  const fullText = ocrResult.text;
 
   // Extract event name before filtering branding lines.
-  const eventName = extractEventName(ocr.lines);
+  const eventName = extractEventName(ocrResult.lines);
   if (debug) traceStep('event_name_detected', { eventName: eventName || '(none)' });
 
+  // If we have Cloud Vision blocks with spatial data, use spatial
+  // analysis for better field classification.
+  if (engine === 'cloud-vision' && cloudResponse?.blocks && cloudResponse.blocks.length > 0) {
+    extractFieldsFromBlocks(cloudResponse.blocks, contact, debug);
+  }
+
+  // If spatial analysis didn't find fields (or we're using
+  // Tesseract), fall back to heuristic line classification.
+  if (!contact.firstName && !contact.lastName) {
+    extractFieldsFromLines(ocrResult.lines, contact, debug);
+  }
+
+  // Optionally pick up an email if visible anywhere on the badge.
+  if (!contact.email) {
+    const emails = extractEmails(fullText);
+    if (emails.length > 0) {
+      contact.email = emails[0];
+    }
+  }
+
+  if (debug) {
+    traceFinalResult({
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      company: contact.company,
+      title: contact.title,
+      email: contact.email,
+      eventName,
+      engine,
+    });
+  }
+
+  return { contact, rawText: fullText, confidence: ocrResult.confidence, engine, eventName };
+}
+
+/**
+ * Use Cloud Vision block heights for spatial field extraction.
+ * Largest text block = name, second largest = company, etc.
+ */
+function extractFieldsFromBlocks(
+  blocks: CloudVisionBlock[],
+  contact: ParsedContact,
+  debug: boolean,
+): void {
+  // Sort blocks by height (descending) — largest text first.
+  const sorted = [...blocks]
+    .filter((b) => b.text.trim().length > 0)
+    .sort((a, b) => b.height - a.height);
+
+  if (sorted.length === 0) return;
+
+  for (const block of sorted) {
+    const text = block.text.trim();
+    if (!text || isGarbageLine(text) || isEventBranding(text)) continue;
+
+    // Check for email/phone — skip those for name/company.
+    if (/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/.test(text)) {
+      if (!contact.email) contact.email = text.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/)?.[0];
+      continue;
+    }
+
+    // Largest unclassified block = name.
+    if (!contact.firstName && !contact.lastName) {
+      if (isLikelyJobTitle(text) && !isLikelyName(text)) {
+        if (!contact.title) {
+          contact.title = text;
+          if (debug) traceClassification(text, 'spatial_title', 'title');
+        }
+        continue;
+      }
+      if (isLikelyCompany(text)) {
+        if (!contact.company) {
+          contact.company = text;
+          if (debug) traceClassification(text, 'spatial_company', 'company');
+        }
+        continue;
+      }
+      // Assume it's the name.
+      const words = text.split(/\s+/).filter(Boolean);
+      contact.firstName = words[0] || '';
+      contact.lastName = words.slice(1).join(' ') || undefined;
+      contact.fullName = text;
+      if (debug) traceClassification(text, 'spatial_largest', 'name');
+      continue;
+    }
+
+    // Second largest = company (if not already set).
+    if (!contact.company) {
+      if (isLikelyJobTitle(text)) {
+        if (!contact.title) {
+          contact.title = text;
+          if (debug) traceClassification(text, 'spatial_title', 'title');
+        }
+      } else {
+        contact.company = text;
+        if (debug) traceClassification(text, 'spatial_second', 'company');
+      }
+      continue;
+    }
+
+    // Remaining: title.
+    if (!contact.title && isLikelyJobTitle(text)) {
+      contact.title = text;
+      if (debug) traceClassification(text, 'spatial_title', 'title');
+    }
+  }
+}
+
+/**
+ * Heuristic line-based field extraction (used for Tesseract
+ * output or when Cloud Vision spatial data is insufficient).
+ */
+function extractFieldsFromLines(
+  rawLines: string[],
+  contact: ParsedContact,
+  debug: boolean,
+): void {
   // Clean OCR artifacts, then filter garbage and event branding.
-  const cleanLines = ocr.lines
+  const cleanLines = rawLines
     .map(cleanOCRLine)
     .filter((line) => line.length > 0 && !isGarbageLine(line) && !isEventBranding(line));
 
   if (debug) traceCleanedLines(cleanLines);
 
-  // Use all cleaned lines — real contact data can appear far
-  // down when Tesseract reads surrounding graphics, sponsors,
-  // and badge-holder noise before reaching the attendee text.
   const candidateLines = cleanLines;
 
-  // Try to detect company first so we can exclude it from the
-  // name candidate pool. Check explicit keywords first, then
-  // fall back to short ALL-CAPS lines.
+  // Detect company first.
   for (const line of candidateLines) {
     if (contact.company) break;
 
@@ -86,10 +203,6 @@ export async function processBadgeImage(
       continue;
     }
 
-    // Short ALL-CAPS line (1-3 words) that isn't a title keyword
-    // is likely a company name (e.g. "CODER"). But skip 2-word
-    // ALL-CAPS lines that look like a person's name — badges
-    // almost always print names in uppercase.
     const words = line.trim().split(/\s+/);
     if (
       words.length >= 1 &&
@@ -115,9 +228,7 @@ export async function processBadgeImage(
     }
   }
 
-  // Name detection — badges often split first/last name across
-  // two lines ("Ross" then "Weatherford"). Collect consecutive
-  // name-like lines and merge them.
+  // Name detection — collect consecutive name-like lines.
   const nameLines: string[] = [];
   for (const line of candidateLines) {
     if (line === contact.company) continue;
@@ -125,17 +236,11 @@ export async function processBadgeImage(
     if (isLikelyName(line)) {
       nameLines.push(line.trim());
     } else if (nameLines.length > 0) {
-      // Stop collecting once we hit a non-name line after finding
-      // at least one name line (names are grouped together).
       break;
     }
   }
 
-  // Word-level fallback: if no name was found via full-line
-  // matching, try extracting the first word from multi-word lines.
-  // Handles OCR noise suffixes like "Ross SNE" where "Ross" alone
-  // is a valid name but the full line fails isLikelyName because
-  // the appended garbage looks wrong.
+  // Word-level fallback.
   if (nameLines.length === 0) {
     for (const line of candidateLines) {
       if (line === contact.company || line === contact.title) continue;
@@ -151,14 +256,12 @@ export async function processBadgeImage(
   }
 
   if (nameLines.length > 0) {
-    // Merge all consecutive name lines into one string.
     const merged = nameLines.join(' ');
     const words = merged.split(/\s+/).filter(Boolean);
     contact.firstName = words[0];
     contact.lastName = words.slice(1).join(' ') || undefined;
     contact.fullName = merged;
   } else {
-    // Fallback: first non-company, non-title line.
     for (const line of candidateLines) {
       if (line === contact.company) continue;
       if (line === contact.title) continue;
@@ -170,33 +273,8 @@ export async function processBadgeImage(
       break;
     }
   }
-
-  // Optionally pick up an email if visible anywhere on the badge.
-  const emails = extractEmails(fullText);
-  if (emails.length > 0) {
-    contact.email = emails[0];
-  }
-
-  if (debug) {
-    traceFinalResult({
-      firstName: contact.firstName,
-      lastName: contact.lastName,
-      company: contact.company,
-      title: contact.title,
-      email: contact.email,
-      eventName,
-    });
-  }
-
-  return { contact, rawText: fullText, confidence: ocr.confidence, eventName };
 }
 
-/**
- * Returns true if ALL-CAPS words look like a person's name rather
- * than a company. Two words of 2+ alpha chars each (e.g. "GREG
- * BONN", "ROSS WEATHERFORD") are common on badges where names are
- * printed in uppercase.
- */
 function looksLikeAllCapsName(words: string[]): boolean {
   if (words.length !== 2) return false;
   return words.every((w) => /^[A-Z]{2,}$/.test(w));

@@ -6,12 +6,17 @@ export interface Lead {
   title: string;
   email: string;
   phone: string;
+  linkedIn: string;
   notes: string;
   tags: string[];
   eventName: string;
   scannedAt: string;
-  source: 'badge_qr' | 'business_card' | 'manual' | 'cipher_lab';
-  syncStatus: 'pending' | 'exported' | 'saved_to_contacts';
+  source: 'badge_qr' | 'badge_ocr' | 'card_ocr' | 'business_card' | 'manual' | 'cipher_lab';
+  ocrConfidence: number;
+  ocrEngine: 'cloud-vision' | 'tesseract' | 'none';
+  syncStatus: 'pending' | 'synced' | 'failed';
+  exportStatus: 'not-exported' | 'exported';
+  exportedAt: string | null;
   cardImageBlob?: Blob;
   rawQRData?: string;
   createdAt: string;
@@ -25,10 +30,13 @@ export interface LeadInput {
   title?: string;
   email?: string;
   phone?: string;
+  linkedIn?: string;
   notes?: string;
   tags?: string[];
   eventName?: string;
   source: Lead['source'];
+  ocrConfidence?: number;
+  ocrEngine?: Lead['ocrEngine'];
   rawQRData?: string;
   cardImageBlob?: Blob;
 }

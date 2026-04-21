@@ -21,21 +21,25 @@ function ScannerPageContent() {
   const [banner, setBanner] = useState<string | null>(null);
   const [scanStatus, setScanStatus] = useState<ScanStatus>('idle');
   const [ocrConfidence, setOcrConfidence] = useState<number | null>(null);
+  const [ocrEngine, setOcrEngine] = useState<string | null>(null);
 
   // Prevent double-processing while navigating.
   const processingRef = useRef(false);
 
-  // ── Badge QR scan handler ──────────────────────────────────────
-
+  // Badge QR scan handler.
   const handleQRScan = useCallback(
     (decodedText: string) => {
       if (processingRef.current) return;
       processingRef.current = true;
 
+      // Haptic feedback on successful scan.
+      try {
+        if (navigator.vibrate) navigator.vibrate(200);
+      } catch { /* ignore */ }
+
       const result = processQRData(decodedText);
 
       if (result.contact && !result.needsOCR) {
-        // Store the scanned data so the review page can read it.
         try {
           sessionStorage.setItem(
             'musteleads:scan-result',
@@ -44,16 +48,16 @@ function ScannerPageContent() {
               rawQRData: result.rawData,
               type: result.type,
               source: 'badge_qr',
+              ocrEngine: 'none',
+              ocrConfidence: 100,
             }),
           );
-        } catch {
-          // sessionStorage may be unavailable; proceed anyway.
-        }
+        } catch { /* sessionStorage may be unavailable */ }
         router.push('/review');
       } else {
-        // QR unreadable — offer OCR fallback.
-        setScanStatus('needs-ocr');
-        setBanner(null);
+        // QR unreadable or encrypted — auto-trigger badge OCR.
+        setBanner('QR code detected but encrypted — capturing badge text...');
+        setScanStatus('badge-photo');
         processingRef.current = false;
       }
     },
@@ -61,19 +65,15 @@ function ScannerPageContent() {
   );
 
   const handleQRError = useCallback((error: string) => {
-    // Only surface meaningful errors — frame-level decode misses
-    // are filtered by CameraView already.
     console.warn('[ScannerPage] QR error:', error);
   }, []);
 
-  // ── Badge OCR fallback ─────────────────────────────────────────
-
+  // Badge OCR fallback.
   const handleBadgeOCR = useCallback(
     async (imageBlob: Blob) => {
       setScanStatus('processing');
       setBanner(null);
 
-      // Debug: start trace and capture raw image.
       traceStart('badge_photo');
       try {
         const reader = new FileReader();
@@ -83,10 +83,16 @@ function ScannerPageContent() {
 
       const result = await processBadgeImage(imageBlob);
       setOcrConfidence(result.confidence);
+      setOcrEngine(result.engine);
       traceEnd();
 
-      // Log scan completion to server.
-      import('@/lib/serverSync').then(m => m.serverLog('info', 'Badge OCR scan completed', { mode: 'badge_photo', confidence: result.confidence })).catch(() => {});
+      import('@/lib/serverSync').then(m =>
+        m.serverLog('info', 'Badge OCR scan completed', {
+          mode: 'badge_photo',
+          confidence: result.confidence,
+          engine: result.engine,
+        }),
+      ).catch(() => {});
 
       try {
         sessionStorage.setItem(
@@ -95,26 +101,23 @@ function ScannerPageContent() {
             contact: result.contact,
             rawOCRText: result.rawText,
             ocrConfidence: result.confidence,
+            ocrEngine: result.engine,
             eventName: result.eventName,
-            source: 'badge_qr',
+            source: 'badge_ocr',
           }),
         );
-      } catch {
-        // sessionStorage may be unavailable.
-      }
+      } catch { /* sessionStorage may be unavailable */ }
       router.push('/review');
     },
     [router],
   );
 
-  // ── Business card capture + OCR ────────────────────────────────
-
+  // Business card capture + OCR.
   const handleCardCapture = useCallback(
     async (imageBlob: Blob) => {
       setScanStatus('processing');
       setBanner(null);
 
-      // Debug: start trace and capture raw image.
       traceStart('business_card');
       try {
         const reader = new FileReader();
@@ -124,10 +127,16 @@ function ScannerPageContent() {
 
       const result = await processCardImage(imageBlob);
       setOcrConfidence(result.confidence);
+      setOcrEngine(result.engine);
       traceEnd();
 
-      // Log scan completion to server.
-      import('@/lib/serverSync').then(m => m.serverLog('info', 'Card OCR scan completed', { mode: 'business_card', confidence: result.confidence })).catch(() => {});
+      import('@/lib/serverSync').then(m =>
+        m.serverLog('info', 'Card OCR scan completed', {
+          mode: 'business_card',
+          confidence: result.confidence,
+          engine: result.engine,
+        }),
+      ).catch(() => {});
 
       try {
         sessionStorage.setItem(
@@ -136,29 +145,26 @@ function ScannerPageContent() {
             contact: result.contact,
             rawOCRText: result.rawText,
             ocrConfidence: result.confidence,
+            ocrEngine: result.engine,
             eventName: result.eventName,
-            source: 'business_card',
+            source: 'card_ocr',
           }),
         );
-      } catch {
-        // sessionStorage may be unavailable.
-      }
+      } catch { /* sessionStorage may be unavailable */ }
       router.push('/review');
     },
     [router],
   );
 
-  // ── Mode switching ─────────────────────────────────────────────
-
+  // Mode switching.
   const handleModeChange = useCallback((newMode: 'badge' | 'card') => {
     processingRef.current = false;
     setBanner(null);
     setScanStatus('idle');
     setOcrConfidence(null);
+    setOcrEngine(null);
     setMode(newMode);
   }, []);
-
-  // ── Rendering ──────────────────────────────────────────────────
 
   return (
     <div className="flex min-h-screen flex-col items-center gap-6 px-4 pt-6">
@@ -175,22 +181,27 @@ function ScannerPageContent() {
       {scanStatus === 'processing' && (
         <div className="w-full max-w-md rounded-xl bg-zinc-800 px-4 py-4 text-center">
           <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-          <p className="text-sm text-white/80">Processing with OCR…</p>
+          <p className="text-sm text-white/80">
+            {navigator.onLine ? 'Processing with Cloud OCR...' : 'Processing offline with Tesseract...'}
+          </p>
           <p className="mt-1 text-xs text-white/40">This may take a few seconds.</p>
         </div>
       )}
 
       {/* OCR confidence indicator. */}
       {ocrConfidence !== null && scanStatus !== 'processing' && (
-        <div className="rounded-full bg-zinc-800 px-3 py-1 text-xs text-white/60">
-          OCR: {Math.round(ocrConfidence)}% confident
+        <div className="flex items-center gap-2 rounded-full bg-zinc-800 px-3 py-1 text-xs text-white/60">
+          <span className={`inline-block h-2 w-2 rounded-full ${
+            ocrConfidence >= 90 ? 'bg-green-500' :
+            ocrConfidence >= 70 ? 'bg-yellow-500' : 'bg-red-500'
+          }`} />
+          <span>{ocrEngine === 'cloud-vision' ? 'Cloud' : 'Offline'} OCR: {Math.round(ocrConfidence)}%</span>
         </div>
       )}
 
       <div className="w-full max-w-md">
         {mode === 'badge' ? (
           scanStatus === 'needs-ocr' || scanStatus === 'badge-photo' ? (
-            // Badge OCR fallback — capture badge face photo.
             <div className="flex flex-col items-center gap-4">
               <div className="w-full rounded-xl bg-zinc-800 px-4 py-3 text-center text-sm text-white/80">
                 {scanStatus === 'needs-ocr'
@@ -209,8 +220,6 @@ function ScannerPageContent() {
                 onScanSuccess={handleQRScan}
                 onScanError={handleQRError}
               />
-              {/* Allow photographing the badge directly without
-                  waiting for a QR failure. */}
               <button
                 onClick={() => setScanStatus('badge-photo')}
                 className="rounded-full border border-white/20 px-5 py-2 text-sm font-medium text-white/70 transition-colors hover:bg-white/10"

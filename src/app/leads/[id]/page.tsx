@@ -8,6 +8,8 @@ import { generateCSV, downloadCSV } from '@/export/CSVExporter';
 
 const SOURCE_LABELS: Record<string, string> = {
   badge_qr: 'QR',
+  badge_ocr: 'Badge OCR',
+  card_ocr: 'Card OCR',
   business_card: 'Card',
   manual: 'Manual',
   cipher_lab: 'CipherLab',
@@ -75,6 +77,7 @@ export default function LeadDetailPage() {
     { label: 'Title', value: lead.title },
     { label: 'Email', value: lead.email },
     { label: 'Phone', value: lead.phone },
+    { label: 'LinkedIn', value: lead.linkedIn, isLink: true },
     { label: 'Event', value: lead.eventName },
     { label: 'Notes', value: lead.notes },
   ];
@@ -130,7 +133,11 @@ export default function LeadDetailPage() {
                 <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">
                   {f.label}
                 </p>
-                <p className="mt-0.5 text-sm">{f.value}</p>
+                {f.isLink && f.value ? (
+                  <a href={f.value} target="_blank" rel="noopener noreferrer" className="mt-0.5 text-sm text-blue-400 underline">{f.value}</a>
+                ) : (
+                  <p className="mt-0.5 text-sm">{f.value}</p>
+                )}
               </div>
             ),
         )}

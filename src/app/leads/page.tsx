@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useLeadStore } from '@/leads/LeadStore';
 import type { Lead } from '@/types/Lead';
 
-type Filter = 'all' | 'pending' | 'exported';
+type Filter = 'all' | 'pending' | 'exported' | 'synced';
 
 export default function LeadsPage() {
   const { leads, loading, loadLeads, deleteLead } = useLeadStore();
@@ -23,11 +23,9 @@ export default function LeadsPage() {
     if (filter === 'pending') {
       result = result.filter((l) => l.syncStatus === 'pending');
     } else if (filter === 'exported') {
-      result = result.filter(
-        (l) =>
-          l.syncStatus === 'exported' ||
-          l.syncStatus === 'saved_to_contacts',
-      );
+      result = result.filter((l) => l.exportStatus === 'exported');
+    } else if (filter === 'synced') {
+      result = result.filter((l) => l.syncStatus === 'synced');
     }
 
     // Search by name, company, email.
@@ -145,6 +143,14 @@ function LeadCard({
               {lead.eventName}
             </span>
           )}
+          {lead.tags && lead.tags.length > 0 && lead.tags.map((tag, i) => (
+            <span key={i} className="rounded-full border border-white/15 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/40">
+              {tag}
+            </span>
+          ))}
+          <span className={`text-[10px] ${lead.syncStatus === 'synced' ? 'text-green-400/50' : lead.syncStatus === 'failed' ? 'text-red-400/50' : 'text-white/30'}`}>
+            {lead.syncStatus === 'synced' ? '✓' : lead.syncStatus === 'failed' ? '✕' : '↻'}
+          </span>
           <span className="text-[10px] text-white/30">
             {new Date(lead.scannedAt).toLocaleString()}
           </span>

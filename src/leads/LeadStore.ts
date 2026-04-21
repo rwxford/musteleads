@@ -12,6 +12,7 @@ interface LeadState {
   deleteLead: (id: string) => Promise<void>;
   getLeadsByEvent: (eventName: string) => Lead[];
   getPendingCount: () => number;
+  findDuplicateByEmail: (email: string) => Lead | undefined;
 }
 
 export const useLeadStore = create<LeadState>((set, get) => ({
@@ -34,12 +35,17 @@ export const useLeadStore = create<LeadState>((set, get) => ({
       title: input.title || '',
       email: input.email || '',
       phone: input.phone || '',
+      linkedIn: input.linkedIn || '',
       notes: input.notes || '',
       tags: input.tags || [],
       eventName: input.eventName || '',
       scannedAt: now,
       source: input.source,
+      ocrConfidence: input.ocrConfidence || 0,
+      ocrEngine: input.ocrEngine || 'none',
       syncStatus: 'pending',
+      exportStatus: 'not-exported',
+      exportedAt: null,
       rawQRData: input.rawQRData,
       cardImageBlob: input.cardImageBlob,
       createdAt: now,
@@ -79,5 +85,13 @@ export const useLeadStore = create<LeadState>((set, get) => ({
 
   getPendingCount: () => {
     return get().leads.filter((l) => l.syncStatus === 'pending').length;
+  },
+
+  findDuplicateByEmail: (email: string) => {
+    if (!email) return undefined;
+    const normalized = email.trim().toLowerCase();
+    return get().leads.find(
+      (l) => l.email.trim().toLowerCase() === normalized,
+    );
   },
 }));

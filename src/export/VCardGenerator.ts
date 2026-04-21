@@ -53,6 +53,10 @@ export function generateVCard(lead: Lead): string {
     lines.push(`EMAIL;TYPE=WORK:${escapeVCardValue(lead.email)}`);
   }
 
+  if (lead.linkedIn && lead.linkedIn.trim()) {
+    lines.push(`X-SOCIALPROFILE;type=linkedin:${lead.linkedIn}`);
+  }
+
   // Build the NOTE from user notes and event context.
   const noteParts: string[] = [];
   if (lead.notes.trim()) {
