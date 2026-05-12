@@ -39,6 +39,13 @@ export async function performOCR(
     base64Image = imageSource;
   }
 
+  // Resize large images before sending to Cloud Vision to
+  // keep the request payload under ~4MB. Phone cameras can
+  // produce 4K images that bloat to 5MB+ in base64.
+  if (isCloudVisionAvailable()) {
+    base64Image = await resizeForCloudVision(base64Image);
+  }
+
   // Try Cloud Vision first if online.
   if (isCloudVisionAvailable()) {
     try {
@@ -63,6 +70,16 @@ export async function performOCR(
         });
       }
       console.warn('[OCRRouter] Cloud Vision failed, falling back to Tesseract:', err);
+
+      // Log failure to server so we can diagnose remotely.
+      try {
+        const { serverLog } = await import('@/lib/serverSync');
+        serverLog('error', 'Cloud Vision OCR failed, falling back to Tesseract', {
+          error: err instanceof Error ? err.message : String(err),
+          mode,
+          imageSizeBytes: base64Image.length,
+        });
+      } catch { /* fire and forget */ }
     }
   } else {
     if (debug) traceStep('ocr_router', 'Offline — using Tesseract.js');
@@ -93,5 +110,46 @@ function blobToDataURL(blob: Blob): Promise<string> {
     reader.onloadend = () => resolve(reader.result as string);
     reader.onerror = () => reject(new Error('Failed to read blob as data URL'));
     reader.readAsDataURL(blob);
+  });
+}
+
+const MAX_CLOUD_VISION_DIMENSION = 2048;
+
+/**
+ * Resize an image if it exceeds the max dimension for Cloud
+ * Vision. Converts to JPEG at 85% quality to keep the base64
+ * payload small. Returns the original if already small enough.
+ */
+async function resizeForCloudVision(dataUrl: string): Promise<string> {
+  if (typeof document === 'undefined') return dataUrl;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const { naturalWidth: w, naturalHeight: h } = img;
+
+      // Already within limits.
+      if (w <= MAX_CLOUD_VISION_DIMENSION && h <= MAX_CLOUD_VISION_DIMENSION) {
+        resolve(dataUrl);
+        return;
+      }
+
+      const scale = MAX_CLOUD_VISION_DIMENSION / Math.max(w, h);
+      const newW = Math.round(w * scale);
+      const newH = Math.round(h * scale);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = newW;
+      canvas.height = newH;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, newW, newH);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
   });
 }

@@ -34,7 +34,7 @@ export async function cloudVisionOCR(
   mode: 'badge' | 'card',
 ): Promise<{ ocrResult: OCRResult; cloudResponse: CloudVisionResponse }> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
     const res = await fetch('/api/ocr', {

@@ -151,15 +151,34 @@ function extractFieldsFromLines(
   }
 
   // Name detection — collect consecutive name-like lines.
+  // Once we find a line with 2+ words (a complete first+last
+  // name), stop collecting. Without this guard, single-word
+  // lines like company names ("Coder") that pass isLikelyName()
+  // get merged into the name field.
   const nameLines: string[] = [];
+  let foundFullName = false;
   for (const line of candidateLines) {
     if (line === contact.company) continue;
     if (line === contact.title) continue;
     if (isLikelyName(line)) {
       nameLines.push(line.trim());
+      // A line with 2+ words is likely a complete name.
+      // Stop here to avoid merging the next line (company).
+      const wordCount = line.trim().split(/\s+/).length;
+      if (wordCount >= 2) {
+        foundFullName = true;
+        break;
+      }
     } else if (nameLines.length > 0) {
       break;
     }
+  }
+
+  // If we only found single-word name lines, limit to at
+  // most 2 (first + last). More than that likely means we're
+  // picking up non-name lines.
+  if (!foundFullName && nameLines.length > 2) {
+    nameLines.length = 2;
   }
 
   // Word-level fallback.
