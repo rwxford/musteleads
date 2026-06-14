@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Musteleads eval label sidecar",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "firstName": { "type": "string" },
+    "lastName": { "type": "string" },
+    "company": { "type": "string" },
+    "title": { "type": "string" },
+    "email": { "type": "string" },
+    "phone": { "type": "string" },
+    "linkedIn": { "type": "string" },
+    "eventName": { "type": "string" },
+    "notes": { "type": "string" },
+    "_skip": { "type": "boolean" },
+    "_draft": { "type": "boolean" }
+  },
+  "required": ["firstName", "lastName", "company"]
+}
