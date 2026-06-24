@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import BottomNav from '@/components/BottomNav';
 import DebugOverlay from '@/components/DebugOverlay';
+import { Analytics } from '@vercel/analytics/next';
 
 export const metadata: Metadata = {
   title: 'Musteleads',
@@ -40,6 +41,7 @@ export default function RootLayout({
         <main className="pb-20">{children}</main>
         <BottomNav />
         <DebugOverlay />
+        <Analytics />
       </body>
     </html>
   );
